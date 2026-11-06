@@ -100,6 +100,7 @@ export interface Sale {
   collectionItemId: string;
   soldAt: string;
   salePriceCents: number;
+  feesCents?: number | null;
   currency: string;
   notes: string | null;
   cancelledAt: string | null;
@@ -114,6 +115,8 @@ export interface CollectionItem {
   acquiredAt: string | null;
   purchasePriceCents: number | null;
   currency: string;
+  manualValueCents?: number | null;
+  manualValueAt?: string | null;
   notes: string | null;
   status: ItemStatus;
   createdAt: string;
@@ -182,6 +185,8 @@ export interface NewItemsRequest {
   language: PhysicalLanguage;
   acquiredAt?: string | null;
   purchasePriceCents?: number | null;
+  currency?: PurchaseCurrency;
+  manualValueCents?: number | null;
   notes?: string | null;
 }
 
@@ -190,6 +195,7 @@ export type UpdateItemRequest = Partial<Omit<NewItemsRequest, 'provider' | 'exte
 export interface SellRequest {
   soldAt: string;
   salePriceCents: number;
+  feesCents?: number | null;
   notes?: string | null;
 }
 
@@ -197,19 +203,166 @@ export interface SaleHistoryEntry {
   id: string;
   soldAt: string;
   salePriceCents: number;
+  feesCents: number | null;
+  realizedCents: number | null;
   currency: string;
   notes: string | null;
   cancelledAt: string | null;
   createdAt: string;
-  item: { id: string; condition: Condition; variant: Variant; language: PhysicalLanguage; purchasePriceCents: number | null };
+  item: { id: string; condition: Condition; variant: Variant; language: PhysicalLanguage; purchasePriceCents: number | null; purchaseCurrency: string; costCents: number | null };
   card: { id: string; name: string; setName: string; localNumber: string; imageUrl: string | null };
 }
 
 export interface SalesHistory {
-  totals: { count: number; revenueCents: number; currency: string };
+  totals: { count: number; revenueCents: number; feesCents: number; realizedCents: number; salesWithoutCost: number; currency: string };
   sales: SaleHistoryEntry[];
 }
 
 export interface ApiErrorBody {
   error?: { code?: string; message?: string; details?: { path: string; message: string }[] };
+}
+
+// ---- Carteira de investimentos ----
+
+export type Marketplace = 'cardmarket' | 'tcgplayer';
+export type PurchaseCurrency = 'BRL' | 'USD' | 'EUR';
+export type Period = '7d' | '30d' | '90d' | '1y' | 'all';
+export type RankingSort = 'absolute' | 'percent';
+export type ValueSource = 'MARKET' | 'MANUAL';
+
+export interface FxInfo {
+  rate: string;
+  rateDate: string;
+  stale: boolean;
+}
+
+export interface SyncResult {
+  checked: number;
+  failed: number;
+  remaining: number;
+  fx: { EUR: FxInfo | null; USD: FxInfo | null };
+  error?: string;
+}
+
+export interface PortfolioSummary {
+  holdings: { items: number; valued: number; unvalued: number; manualValued: number; withCost: number; withoutCost: number };
+  estimatedValueCents: number;
+  investedCents: number;
+  unrealized: { eligibleItems: number; costBasisCents: number; valueCents: number; gainCents: number; gainPct: number | null };
+  realized: { sales: number; eligibleSales: number; salesWithoutCost: number; grossCents: number; feesCents: number; costBasisCents: number; resultCents: number };
+  totalKnownResultCents: number;
+}
+
+export interface RankingEntry {
+  itemId: string;
+  cardId: string;
+  name: string;
+  setName: string;
+  localNumber: string;
+  imageUrl: string | null;
+  variant: Variant;
+  condition: Condition;
+  valueSource: ValueSource | null;
+  costCents: number;
+  valueCents: number;
+  gainCents: number;
+  gainPct: number | null;
+}
+
+export interface Portfolio {
+  currency: 'BRL';
+  priceSource: Marketplace;
+  summary: PortfolioSummary;
+  rankings: { sort: RankingSort; gainers: RankingEntry[]; losers: RankingEntry[] };
+  meta: {
+    lastUpdatedAt: string | null;
+    unpricedItems: number;
+    staleItems: number;
+    fx: { EUR: (FxInfo & { fetchedAt: string }) | null; USD: (FxInfo & { fetchedAt: string }) | null };
+    disclaimer: string;
+  };
+  sync: SyncResult;
+}
+
+export interface HistoryPoint {
+  date: string;
+  valueCents: number;
+  investedCents: number;
+  valueWithCostCents: number;
+  items: number;
+}
+
+export interface PortfolioHistory {
+  period: Period;
+  priceSource: Marketplace;
+  firstSnapshotDay: string | null;
+  buildingHistory: boolean;
+  points: HistoryPoint[];
+  note: string;
+}
+
+export interface Quote {
+  marketplace: Marketplace;
+  variant: Variant;
+  currency: 'EUR' | 'USD';
+  marketPrice: string;
+  priceField: string;
+  priceCents: number;
+  exchangeRate: string;
+  exchangeRateDate: string;
+  sourceUpdatedAt: string | null;
+  capturedAt: string;
+  stale: boolean;
+}
+
+export interface ItemPerformance {
+  id: string;
+  variant: Variant;
+  condition: Condition;
+  status: ItemStatus;
+  acquiredAt: string | null;
+  purchasePriceCents: number | null;
+  purchaseCurrency: PurchaseCurrency;
+  purchaseFxRate: string | null;
+  costCents: number | null;
+  manualValueCents: number | null;
+  manualValueAt: string | null;
+  valueCents: number | null;
+  valueSource: ValueSource | null;
+  quote: Quote | null;
+  gainCents: number | null;
+  gainPct: number | null;
+  sale: { priceCents: number; feesCents: number | null; soldAt: string } | null;
+  realizedCents: number | null;
+}
+
+export interface PricePoint {
+  date: string;
+  priceCents: number;
+  marketPrice: string;
+  currency: string;
+  exchangeRate: string;
+}
+
+export interface CardPerformance {
+  cardId: string;
+  priceSource: Marketplace;
+  pricesCheckedAt: string | null;
+  pricesStatus: 'OK' | 'NO_PRICING' | 'ERROR' | null;
+  quotes: Record<Marketplace, Quote[]>;
+  history: Partial<Record<Variant, PricePoint[]>>;
+  items: ItemPerformance[];
+  summary: PortfolioSummary;
+  heldVariants: Variant[];
+  disclaimer: string;
+  sync: SyncResult;
+}
+
+export interface CardValues {
+  priceSource: Marketplace;
+  cards: Record<string, { valueCents: number; valued: number; unvalued: number; stale: boolean }>;
+}
+
+export interface UserSettings {
+  priceSource: Marketplace;
 }

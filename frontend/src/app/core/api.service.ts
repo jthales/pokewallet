@@ -12,7 +12,16 @@ import {
   CollectionFilters,
   CollectionItem,
   CollectionQuery,
+  CardPerformance,
+  CardValues,
   Dashboard,
+  Marketplace,
+  Period,
+  Portfolio,
+  PortfolioHistory,
+  RankingSort,
+  SyncResult,
+  UserSettings,
   IdentificationResult,
   IdentifyRequest,
   NewItemsRequest,
@@ -94,5 +103,28 @@ export class ApiService {
   }
   sales(includeCancelled = false) {
     return this.http.get<SalesHistory>(`${this.base}/sales`, { params: params({ includeCancelled }) });
+  }
+
+  // Carteira
+  portfolio(sort: RankingSort = 'absolute') {
+    return this.http.get<Portfolio>(`${this.base}/portfolio`, { params: params({ sort }) });
+  }
+  refreshPrices(body: { since?: string; cardId?: string } = {}) {
+    return this.http.post<SyncResult>(`${this.base}/portfolio/refresh`, body);
+  }
+  portfolioHistory(period: Period) {
+    return this.http.get<PortfolioHistory>(`${this.base}/portfolio/history`, { params: params({ period }) });
+  }
+  cardPerformance(cardId: string) {
+    return this.http.get<CardPerformance>(`${this.base}/portfolio/cards/${cardId}`);
+  }
+  cardValues() {
+    return this.http.get<CardValues>(`${this.base}/portfolio/cards`);
+  }
+  settings() {
+    return this.http.get<UserSettings>(`${this.base}/settings`);
+  }
+  updateSettings(priceSource: Marketplace) {
+    return this.http.put<UserSettings>(`${this.base}/settings`, { priceSource });
   }
 }

@@ -2,11 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { FakeCatalog } from './fakes.js';
+import { FakeCatalog, FakeFx, FakePrices } from './fakes.js';
 
 const prisma = new PrismaClient();
 const catalog = new FakeCatalog();
-const app = createApp({ prisma, catalog });
+const app = createApp({ prisma, catalog, prices: new FakePrices(), exchangeRates: new FakeFx() });
 
 const baseItem = { externalId: 'swsh3-136', condition: 'NEAR_MINT', variant: 'NORMAL', language: 'pt' };
 
@@ -109,7 +109,7 @@ describe('Vendas', () => {
     expect(detail.body.items.find((i: { id: string }) => i.id === items[0]!.id).activeSale.salePriceCents).toBe(4590);
 
     const list = await request(app).get('/api/sales');
-    expect(list.body.totals).toEqual({ count: 1, revenueCents: 4590, currency: 'BRL' });
+    expect(list.body.totals).toMatchObject({ count: 1, revenueCents: 4590, currency: 'BRL' });
     expect(list.body.sales[0].card.name).toBe('Furret');
 
     const dash = await request(app).get('/api/dashboard');
@@ -159,7 +159,7 @@ describe('Persistência', () => {
 
     const restarted = new PrismaClient();
     try {
-      const freshApp = createApp({ prisma: restarted, catalog: new FakeCatalog() });
+      const freshApp = createApp({ prisma: restarted, catalog: new FakeCatalog(), prices: new FakePrices(), exchangeRates: new FakeFx() });
       const dash = await request(freshApp).get('/api/dashboard');
       expect(dash.body).toMatchObject({ distinctCards: 1, totalItems: 2, availableItems: 1, soldItems: 1 });
       expect((await request(freshApp).get('/api/sales')).body.totals.revenueCents).toBe(999);

@@ -1,4 +1,4 @@
-import { centsToInput, formatCents, parseMoneyToCents } from './money';
+import { centsToInput, formatCents, formatPct, formatSignedCents, parseMoneyToCents } from './money';
 
 describe('money', () => {
   it('converte texto em centavos sem erro de ponto flutuante', () => {
@@ -15,5 +15,18 @@ describe('money', () => {
     expect(formatCents(4590).replace(/\s/g, ' ')).toBe('R$ 45,90');
     expect(formatCents(null)).toBe('—');
     expect(centsToInput(1250)).toBe('12,50');
+  });
+});
+
+describe('formatação da carteira', () => {
+  it('percentual com sinal', () => {
+    expect(formatPct(46.67)).toBe('+46,67%');
+    expect(formatPct(-12.5)).toBe('-12,50%');
+    expect(formatPct(null)).toBe('—');
+  });
+  it('valor com sinal', () => {
+    expect(formatSignedCents(7000).replace(/\s/g, ' ')).toBe('+R$ 70,00');
+    expect(formatSignedCents(-1250).replace(/\s/g, ' ')).toBe('−R$ 12,50');
+    expect(formatSignedCents(null)).toBe('—');
   });
 });

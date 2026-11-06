@@ -13,11 +13,12 @@ import { NotifyService } from '../../core/notify.service';
 import { CardImage } from '../../shared/card-image';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EmptyState } from '../../shared/empty-state';
+import { Delta } from '../../shared/delta';
 import { SaleDialog, SaleDialogData } from '../../shared/sale-dialog';
 
 @Component({
   selector: 'app-sales-page',
-  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, MatMenuModule, MatSlideToggleModule, CardImage, EmptyState, BrlPipe, ConditionPipe, VariantPipe],
+  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, MatMenuModule, MatSlideToggleModule, CardImage, EmptyState, BrlPipe, ConditionPipe, VariantPipe, Delta],
   templateUrl: './sales-page.html',
   styleUrl: './sales-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -52,7 +53,7 @@ export class SalesPage {
   }
 
   edit(sale: SaleHistoryEntry) {
-    const data: SaleDialogData = { itemId: sale.item.id, cardName: sale.card.name, sale };
+    const data: SaleDialogData = { itemId: sale.item.id, cardName: sale.card.name, costCents: sale.item.costCents, sale };
     this.dialog.open(SaleDialog, { data, width: '420px', maxWidth: '95vw' }).afterClosed().subscribe((ok) => ok && this.load());
   }
 

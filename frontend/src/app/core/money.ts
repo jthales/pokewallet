@@ -24,3 +24,31 @@ export function centsToInput(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return '';
   return (cents / 100).toFixed(2).replace('.', ',');
 }
+
+const pctFormatter = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero' });
+
+/** Formata um percentual já calculado pelo servidor (ex.: 46.67 → "+46,67%"). */
+export function formatPct(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  return `${pctFormatter.format(value)}%`;
+}
+
+/** Centavos com sinal explícito (ex.: +R$ 70,00 / −R$ 12,00). */
+export function formatSignedCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return '—';
+  if (cents === 0) return formatCents(0);
+  return `${cents > 0 ? '+' : '−'}${formatCents(Math.abs(cents))}`;
+}
+
+const foreign: Record<string, Intl.NumberFormat> = {};
+/** Formata um valor decimal (string) numa moeda estrangeira, apenas para exibição. */
+export function formatForeign(value: string, currency: string): string {
+  foreign[currency] ??= new Intl.NumberFormat('pt-BR', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return foreign[currency].format(Number(value));
+}
+
+export function formatCurrencyCents(cents: number | null | undefined, currency: string): string {
+  if (cents === null || cents === undefined) return '—';
+  if (currency === 'BRL') return formatCents(cents);
+  return formatForeign((cents / 100).toFixed(2), currency);
+}

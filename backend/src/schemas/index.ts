@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { CONDITIONS, ITEM_STATUSES, PHYSICAL_LANGUAGES, VARIANTS } from '../domain.js';
+import { CONDITIONS, ITEM_STATUSES, PHYSICAL_LANGUAGES, PURCHASE_CURRENCIES, VARIANTS } from '../domain.js';
+import { MARKETPLACES } from '../integrations/market-price-provider.js';
 
 const Lang = z.enum(['en', 'pt']).default('en');
 const Cents = z.number().int().min(0).max(1_000_000_00);
@@ -37,6 +38,10 @@ const ItemFields = {
   language: z.enum(PHYSICAL_LANGUAGES),
   acquiredAt: OptionalDate,
   purchasePriceCents: Cents.nullable().optional(),
+  /** Moeda do preço pago; BRL quando omitida. */
+  currency: z.enum(PURCHASE_CURRENCIES).optional(),
+  /** Avaliação manual (BRL), usada quando não há cotação de mercado compatível. */
+  manualValueCents: Cents.nullable().optional(),
   notes: Notes,
 };
 
@@ -57,6 +62,8 @@ export const UpdateItemSchema = z
     language: ItemFields.language.optional(),
     acquiredAt: OptionalDate,
     purchasePriceCents: ItemFields.purchasePriceCents,
+    currency: ItemFields.currency,
+    manualValueCents: ItemFields.manualValueCents,
     notes: Notes,
   })
   .strict()
@@ -77,6 +84,8 @@ export const SellItemSchema = z
   .object({
     soldAt: z.coerce.date(),
     salePriceCents: Cents,
+    /** Custos da venda (frete, taxas). */
+    feesCents: Cents.nullable().optional(),
     notes: Notes,
   })
   .strict();
@@ -86,6 +95,7 @@ export const UpdateSaleSchema = z
   .object({
     soldAt: z.coerce.date().optional(),
     salePriceCents: Cents.optional(),
+    feesCents: Cents.nullable().optional(),
     notes: Notes,
   })
   .strict()
@@ -98,3 +108,17 @@ export const SalesQuerySchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 });
+
+export const PortfolioQuerySchema = z.object({ sort: z.enum(['absolute', 'percent']).default('absolute') });
+
+export const PortfolioHistoryQuerySchema = z.object({ period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d') });
+
+export const RefreshPricesSchema = z
+  .object({
+    /** Atualização manual: consulta tudo que não foi verificado depois deste instante. */
+    since: z.coerce.date().optional(),
+    cardId: Id.optional(),
+  })
+  .strict();
+
+export const UpdateSettingsSchema = z.object({ priceSource: z.enum(MARKETPLACES) }).strict();

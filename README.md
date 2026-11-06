@@ -58,6 +58,8 @@ Veja `backend/.env.example`. Os valores do exemplo já funcionam com o Docker lo
 | `TCGDEX_BASE_URL` | `https://api.tcgdex.net/v2` | API da TCGdex |
 | `CATALOG_CACHE_TTL_SECONDS` | `21600` | Cache em memória das consultas ao catálogo |
 | `CATALOG_TIMEOUT_MS` | `8000` | Timeout de cada chamada à TCGdex |
+| `FX_BASE_URL` | `https://api.frankfurter.dev/v2` | API de câmbio (Frankfurter, gratuita, sem chave) |
+| `PRICE_TIMEOUT_MS` | `8000` | Timeout das consultas de preço e câmbio |
 | `CORS_ORIGIN` | `http://localhost:4200` | Origens liberadas no CORS |
 
 ## Publicando no Vercel (gratuito)
@@ -124,13 +126,52 @@ Arquitetura da integração:
 - O catálogo **não** é baixado inteiro. Uma carta só é gravada localmente (`CardCatalog`) quando entra na coleção.
 - Com a TCGdex fora do ar, coleção, detalhes, edição, vendas e dashboard continuam funcionando. Novos exemplares de cartas já salvas também. Só a busca e o cadastro de cartas novas respondem com uma mensagem clara (HTTP 503).
 
+## Carteira de investimentos
+
+A seção **Minha carteira** (Início) e o bloco **Desempenho financeiro** (página da carta) mostram quanto a coleção vale hoje e quanto você ganhou ou perdeu. Tudo usa APIs gratuitas, sem chave nem cartão.
+
+**Preços de mercado (TCGdex `pricing`).** Uma consulta `GET /v2/en/cards/{id}` por carta, mesmo que existam vários exemplares. Contrato conferido na API real em 06/11/2026:
+
+| Variante do exemplar | Cardmarket (EUR) | TCGplayer (USD) |
+| --- | --- | --- |
+| Normal | `trend` (alternativa: `avg`) | `normal.marketPrice` (ou `unlimited`) |
+| Holofoil | carta só holo: `trend`; carta normal + holo: `trend-holo` | `holofoil.marketPrice` (ou `unlimited-holofoil`) |
+| Reverse Holofoil | `trend-holo` (alternativa: `avg-holo`) | `reverse-holofoil.marketPrice` |
+| 1ª edição | indisponível (a Cardmarket separa em outro produto) | `1st-edition-holofoil` / `1st-edition` |
+| Outra | indisponível | indisponível |
+
+Por que holo usa `trend` na Cardmarket: os campos `-holo` são a versão *foil* do produto. Numa carta que só existe holo (ex.: Pikachu VMAX `swsh4-44`), o produto-base já é o holo — `trend` 13,33 € bate com TCGplayer holofoil 11,69 US$, enquanto `trend-holo` vinha 25,71 ou até 0. Numa carta normal + reverse (`sv03.5-025`), `trend-holo` 0,64 € bate com o reverse da TCGplayer (0,80 US$). Quando a carta tem normal, holo e reverse, o foil é ambíguo e fica sem cotação.
+
+Regras: nunca fazemos média entre marketplaces, nunca usamos o preço de outra variante, e `null`/`0`/negativo não é cotação. Sem preço compatível, o exemplar mostra "Preço indisponível" e aceita uma **avaliação manual**, sempre identificada como manual. `avg1/avg7/avg30` são médias móveis e não viram histórico. A fonte de referência (Cardmarket ou TCGplayer) é escolhida no seletor da carteira.
+
+**Câmbio (Frankfurter).** `GET /v2/rate/EUR/BRL` e `/v2/rate/USD/BRL` (`{"date","base","quote","rate"}`), guardado na tabela `ExchangeRate` com cache de 24 h. Se a API falhar, usamos o último câmbio salvo marcado como desatualizado; sem nenhum, a cotação não é gravada (nunca usamos taxa fixa). Preço de compra em US$ ou € é convertido pelo câmbio da **data de aquisição** (`?date=`), salvo no exemplar.
+
+**Atualização (sem cron, fila ou Redis).** Ao abrir a carteira, a coleção ou uma carta, o backend consulta só as cartas com cotação vencida (≈24 h), em lotes de até 15 (para caber no tempo da função do Vercel); o app continua os lotes em segundo plano. O botão **Atualizar** força a reconsulta. Se a TCGdex falhar, o último preço válido é mantido e marcado como desatualizado, e a carta só é tentada de novo depois de 15 min. Ao adicionar exemplares, a cotação da carta é buscada na hora.
+
+> ⚠️ O histórico de preços só cresce quando o app é usado: cada dia com acesso grava no máximo um snapshot por carta + marketplace + variante. Dias sem uso ficam sem registro (não inventamos preços passados).
+
+**Cálculos** (centavos inteiros e `Decimal`, nunca ponto flutuante):
+
+- Valorização = valor atual − custo; rentabilidade = valorização ÷ custo × 100 (só com custo > 0).
+- Preço pago ausente nunca é zero: o exemplar entra no patrimônio, mas não na rentabilidade.
+- Patrimônio estimado = soma dos exemplares disponíveis com valor. Capital investido = soma dos disponíveis com preço pago. Valorização não realizada = só exemplares com custo **e** valor.
+- Lucro realizado = venda − preço pago − custos da venda. Vendidos saem do patrimônio (sem dupla contagem). Resultado total conhecido = realizado + não realizado.
+- A tela sempre informa quantos exemplares ficaram fora de cada total.
+- O gráfico de patrimônio usa só dias com snapshots reais e considera entradas (data de aquisição/cadastro) e saídas (data da venda); a linha tracejada de capital aplicado mostra quanto do crescimento veio de novas compras.
+- A cotação é uma referência de mercado, não oferta garantida, e não é ajustada pela condição física do exemplar.
+
 ## Modelo de dados
 
 Banco: PostgreSQL via Prisma (`backend/prisma/schema.prisma`).
 
 - **CardCatalog**: cópia local dos metadados da carta. Identificada por `(provider, externalId)`, então outros fornecedores podem ser adicionados sem mudar a coleção. Preços de mercado, quando existirem, serão outra responsabilidade.
 - **CollectionItem**: um exemplar físico (condição, variante, idioma físico, data de aquisição, preço pago, observações, status `AVAILABLE`/`SOLD`).
-- **Sale**: venda de um exemplar (data, valor, observações). Desfazer uma venda preenche `cancelledAt`, mantém o histórico e devolve o exemplar para *disponível*.
+- **Sale**: venda de um exemplar (data, valor, custos da venda `feesCents`, observações). Desfazer uma venda preenche `cancelledAt`, mantém o histórico e devolve o exemplar para *disponível*.
+- **CardPriceSnapshot**: cotação de um dia por carta + marketplace + variante (único por dia), com valor original, moeda, campo usado, valor em BRL, câmbio e data do câmbio.
+- **ExchangeRate**: câmbio diário EUR/BRL e USD/BRL.
+- **AppSetting**: preferências (marketplace de referência).
+
+A migration `…_portfolio` só **acrescenta** colunas anuláveis e tabelas novas; nenhum dado existente é alterado (há um teste que aplica as migrations sobre dados antigos e confere tudo).
 
 Valores monetários são **inteiros em centavos** (`purchasePriceCents`, `salePriceCents`) com `currency = "BRL"`, evitando erros de ponto flutuante.
 
@@ -161,6 +202,12 @@ Regras garantidas no backend:
 | GET | `/api/sales?includeCancelled` | Histórico e total recebido |
 | PATCH | `/api/sales/:id` | Corrige venda |
 | POST | `/api/sales/:id/cancel` | Desfaz venda |
+| GET | `/api/portfolio?sort=absolute\|percent` | Indicadores, rankings e avisos (atualiza cotações vencidas em lote) |
+| POST | `/api/portfolio/refresh` | Atualiza cotações (`since` força a reconsulta; repetir enquanto `remaining > 0`) |
+| GET | `/api/portfolio/history?period=7d\|30d\|90d\|1y\|all` | Patrimônio e capital aplicado por dia |
+| GET | `/api/portfolio/cards` | Valor estimado por carta (lista da coleção) |
+| GET | `/api/portfolio/cards/:id` | Desempenho e histórico de preço de uma carta |
+| GET / PUT | `/api/settings` | Marketplace de referência (`cardmarket` ou `tcgplayer`) |
 
 Todas as entradas são validadas com Zod (campos extras são rejeitados). Erros seguem o formato `{ "error": { "code", "message", "details?" } }`.
 
@@ -175,23 +222,25 @@ backend/
   src/vercel.ts           entrada da função serverless do Vercel
   src/
     controllers/          camada HTTP
-    services/             regras (coleção, vendas, identificação, parser do OCR)
+    services/             regras (coleção, vendas, identificação, parser do OCR, câmbio,
+                          histórico de preços, carteira e cálculos financeiros)
     repositories/         acesso ao banco (Prisma)
-    integrations/         CardCatalogProvider + cliente TCGdex (schemas Zod, assets)
+    integrations/         CardCatalogProvider + cliente TCGdex (schemas Zod, assets),
+                          MarketPriceProvider (preços TCGdex) e Frankfurter (câmbio)
     schemas/              validação das requisições (Zod)
     routes/               rotas Express
     lib/                  cache, textos, erros
   tests/                  Vitest + Supertest (PostgreSQL de teste, schema isolado)
 frontend/src/app/
   core/                   API, modelos, rótulos, dinheiro
-  shared/                 imagem de carta, empty state, skeleton, diálogos
+  shared/                 imagem de carta, empty state, skeleton, diálogos, gráfico SVG, variação
   features/
     dashboard/  scanner/  collection/  card-details/  sales/
 ```
 
 ## Testes
 
-`npm test` roda **41 testes no backend** e **10 no frontend**, cobrindo:
+`npm test` roda **76 testes no backend** e **12 no frontend**, cobrindo:
 
 - identificação por nome, por número + expansão e por nome + número com zeros à esquerda;
 - parser de OCR (`136/189`, `TG01/TG30`, `l36/l89`, promos, ruído, idioma);
@@ -201,7 +250,8 @@ frontend/src/app/
 - cadastro de duplicatas e de vários exemplares;
 - venda de um único exemplar, venda duplicada (inclusive concorrente), correção e desfazer venda;
 - edição de exemplar, validação de entrada e de imagem (formato e tamanho);
-- persistência após reiniciar o cliente do banco.
+- persistência após reiniciar o cliente do banco;
+- carteira: conversão EUR/USD → BRL, valorização e desvalorização, custo ausente, preço indisponível, preço por variante, realizado × não realizado, venda de um exemplar duplicado, snapshots sem duplicidade no dia, falhas da TCGdex e da Frankfurter, cotações desatualizadas, atualização após adição e venda, patrimônio sem dupla contagem e migrations preservando os dados existentes. As APIs externas são simuladas nos testes.
 
 Os testes do backend precisam do PostgreSQL rodando (`npm run db:up`).
 
@@ -209,4 +259,4 @@ Além disso, o fluxo completo foi testado num navegador (Chromium headless) com 
 
 ## Fora do escopo deste MVP
 
-Não implementado de propósito: preços de mercado, integração com Cardmarket/TCGplayer, gráficos, histórico de preços, dashboard financeiro, autenticação, sincronização em nuvem, marketplace e IA paga.
+Não implementado de propósito: autenticação, sincronização em nuvem, marketplace e IA paga.

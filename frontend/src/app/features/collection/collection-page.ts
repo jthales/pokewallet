@@ -8,7 +8,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { Subscription } from 'rxjs';
 import { ApiService, errorMessage } from '../../core/api.service';
-import { CollectionCard, CollectionFilters, CollectionQuery, ItemStatus } from '../../core/models';
+import { BrlPipe } from '../../core/format.pipes';
+import { CardValues, CollectionCard, CollectionFilters, CollectionQuery, ItemStatus } from '../../core/models';
 import { CardImage } from '../../shared/card-image';
 import { EmptyState } from '../../shared/empty-state';
 import { SkeletonGrid } from '../../shared/skeleton-grid';
@@ -17,7 +18,7 @@ type SortKey = 'createdAt-desc' | 'createdAt-asc' | 'name-asc' | 'name-desc';
 
 @Component({
   selector: 'app-collection-page',
-  imports: [FormsModule, RouterLink, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatSelectModule, CardImage, EmptyState, SkeletonGrid],
+  imports: [FormsModule, RouterLink, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule, MatSelectModule, CardImage, EmptyState, SkeletonGrid, BrlPipe],
   templateUrl: './collection-page.html',
   styleUrl: './collection-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -34,6 +35,8 @@ export class CollectionPage {
   readonly cards = signal<CollectionCard[]>([]);
   readonly filters = signal<CollectionFilters>({ sets: [], rarities: [] });
   readonly loading = signal(true);
+  /** Valor estimado dos exemplares disponíveis, por carta (últimas cotações salvas). */
+  readonly values = signal<CardValues['cards']>({});
   readonly error = signal<string | null>(null);
   readonly hasFilters = () => !!(this.search() || this.setId() || this.rarity() || this.status());
 
@@ -42,6 +45,7 @@ export class CollectionPage {
 
   constructor() {
     this.api.collectionFilters().subscribe({ next: (f) => this.filters.set(f), error: () => undefined });
+    this.loadValues();
     // Recarrega sempre que um filtro muda; a busca por texto tem debounce.
     effect(() => {
       const query: CollectionQuery = {
@@ -75,6 +79,13 @@ export class CollectionPage {
         this.loading.set(false);
       },
     });
+  }
+
+  /** Mostra os últimos preços salvos e, se houver cotações vencidas, atualiza em segundo plano. */
+  private loadValues(refreshed = false) {
+    this.api.cardValues().subscribe({ next: (v) => this.values.set(v.cards), error: () => undefined });
+    if (refreshed) return;
+    this.api.refreshPrices().subscribe({ next: (r) => r.checked > 0 && this.loadValues(true), error: () => undefined });
   }
 
   clear() {

@@ -6,6 +6,8 @@ const EnvSchema = z.object({
   TCGDEX_BASE_URL: z.url().default('https://api.tcgdex.net/v2'),
   CATALOG_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(21600),
   CATALOG_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
+  FX_BASE_URL: z.url().default('https://api.frankfurter.dev/v2'),
+  PRICE_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
   CORS_ORIGIN: z.string().default('http://localhost:4200'),
   NODE_ENV: z.string().default('development'),
 });
