@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, inject, output, signal, viewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
@@ -12,11 +12,13 @@ const CARD_RATIO = 63 / 88;
 @Component({
   selector: 'app-camera-capture',
   imports: [MatButtonModule, MatIconModule],
+  host: { '[class.fullscreen]': 'fullscreen()' },
   template: `
     <div class="viewport" [class.on]="active()">
       <video #video playsinline muted autoplay aria-label="Pré-visualização da câmera"></video>
       @if (active()) {
-        <div class="guide" #guide aria-hidden="true"><span>Enquadre a carta inteira</span></div>
+        <div class="guide" #guide aria-hidden="true"></div>
+        <p class="tip" aria-hidden="true">Enquadre a carta inteira na moldura</p>
       } @else {
         <div class="idle">
           @if (error()) {
@@ -33,42 +35,90 @@ const CARD_RATIO = 63 / 88;
     </div>
     @if (active()) {
       <div class="controls">
-        <button mat-button (click)="stop()"><mat-icon>close</mat-icon>Fechar</button>
-        <button class="shutter" (click)="capture()" aria-label="Tirar foto"><span></span></button>
-        <span class="spacer"></span>
+        <button class="side" type="button" (click)="stop()"><mat-icon>close</mat-icon><span>Fechar</span></button>
+        <button class="shutter" type="button" (click)="capture()" aria-label="Tirar foto"><span></span></button>
+        <button class="side" type="button" (click)="openGallery()"><mat-icon>photo_library</mat-icon><span>Galeria</span></button>
       </div>
     }
   `,
   styles: `
     :host { display: block; }
-    .viewport { position: relative; border-radius: 16px; overflow: hidden; background: #111; aspect-ratio: 3 / 4; max-height: 70dvh; margin: 0 auto; }
+    .viewport { position: relative; border-radius: 16px; overflow: hidden; background: linear-gradient(135deg, #1b2a3f, #111); }
+    .viewport.on { container-type: size; }
     video { width: 100%; height: 100%; object-fit: cover; display: none; }
     .on video { display: block; }
     .guide {
-      position: absolute; top: 50%; left: 50%; height: 86%; aspect-ratio: 63 / 88; transform: translate(-50%, -50%);
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(86cqw, calc(84cqh * 63 / 88)); aspect-ratio: 63 / 88;
       border: 3px solid var(--pw-yellow); border-radius: 14px; box-shadow: 0 0 0 100vmax rgb(0 0 0 / .45);
-      display: flex; align-items: flex-end; justify-content: center;
-      span { background: rgb(0 0 0 / .6); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 999px; margin-bottom: -34px; }
     }
-    .idle { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #eee; text-align: center; padding: 24px; }
-    .idle mat-icon { font-size: 48px; width: 48px; height: 48px; color: var(--pw-yellow); }
+    .tip {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); margin: 0; white-space: nowrap;
+      background: rgb(0 0 0 / .6); color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 999px;
+    }
+    .idle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #eee; text-align: center; padding: 24px 20px; }
+    .idle mat-icon { font-size: 40px; width: 40px; height: 40px; color: var(--pw-yellow); }
+    .idle button { height: 48px; padding: 0 28px; font-weight: 800; }
     .idle p { margin: 0; max-width: 300px; }
-    .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-top: 12px; }
-    .shutter { width: 68px; height: 68px; border-radius: 50%; border: 4px solid var(--pw-red); background: #fff; padding: 5px; cursor: pointer; }
-    .shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--pw-red); }
-    .shutter:active span { transform: scale(.92); }
-    .shutter:focus-visible { outline: 3px solid var(--pw-blue); outline-offset: 3px; }
+
+    /* Com a câmera aberta, ocupa a tela inteira: prévia em cima e botão de foto sempre visível embaixo. */
+    :host(.fullscreen) {
+      position: fixed; inset: 0; z-index: 1000; background: #000;
+      display: flex; flex-direction: column;
+      padding-top: env(safe-area-inset-top);
+    }
+    :host(.fullscreen) .viewport { flex: 1; min-height: 0; aspect-ratio: auto; max-height: none; border-radius: 0; width: 100%; }
+    .controls {
+      flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; justify-items: center;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: #000;
+    }
+    .side {
+      display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; color: #fff;
+      font: inherit; font-size: 12px; padding: 8px 12px; border-radius: 12px; cursor: pointer; min-width: 64px;
+    }
+    .side:focus-visible { outline: 2px solid var(--pw-yellow); }
+    .shutter { width: 76px; height: 76px; border-radius: 50%; border: 4px solid #fff; background: transparent; padding: 5px; cursor: pointer; }
+    .shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--pw-red); transition: transform .1s; }
+    .shutter:active span { transform: scale(.9); }
+    .shutter:focus-visible { outline: 3px solid var(--pw-yellow); outline-offset: 3px; }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CameraCapture implements OnDestroy {
   readonly captured = output<Blob>();
+  /** Pede ao componente pai para abrir a seleção de foto da galeria. */
+  readonly gallery = output<void>();
   readonly video = viewChild.required<ElementRef<HTMLVideoElement>>('video');
   readonly guide = viewChild<ElementRef<HTMLElement>>('guide');
   readonly active = signal(false);
+  readonly fullscreen = signal(false);
   readonly starting = signal(false);
   readonly error = signal<string | null>(null);
   private stream: MediaStream | null = null;
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  /** Marca a posição original do componente enquanto ele está em tela cheia no <body>. */
+  private placeholder: Comment | null = null;
+
+  /**
+   * Em tela cheia o componente é movido para o <body>: assim nenhum ancestral com transform
+   * (como as abas do Material) ou a navegação fixa do app fica por cima da câmera.
+   */
+  private enterFullscreen() {
+    if (this.placeholder || !this.host.parentNode) return;
+    this.placeholder = document.createComment('camera');
+    this.host.parentNode.insertBefore(this.placeholder, this.host);
+    document.body.appendChild(this.host);
+    document.body.style.overflow = 'hidden';
+    this.fullscreen.set(true);
+  }
+
+  private exitFullscreen() {
+    if (this.placeholder?.parentNode) this.placeholder.parentNode.insertBefore(this.host, this.placeholder);
+    this.placeholder?.remove();
+    this.placeholder = null;
+    document.body.style.overflow = '';
+    this.fullscreen.set(false);
+  }
 
   async start() {
     this.error.set(null);
@@ -86,6 +136,8 @@ export class CameraCapture implements OnDestroy {
         audio: false,
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } },
       });
+      // Entra em tela cheia antes de tocar o vídeo: mover um <video> tocando no DOM o pausaria.
+      this.enterFullscreen();
       const video = this.video().nativeElement;
       video.srcObject = this.stream;
       await video.play();
@@ -154,6 +206,12 @@ export class CameraCapture implements OnDestroy {
     const video = this.video().nativeElement;
     video.srcObject = null;
     this.active.set(false);
+    this.exitFullscreen();
+  }
+
+  openGallery() {
+    this.stop();
+    this.gallery.emit();
   }
 
   ngOnDestroy() {

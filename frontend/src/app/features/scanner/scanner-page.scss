@@ -10,10 +10,12 @@
 }
 .error { color: #b3261e; margin: 12px 0; }
 .small { font-size: 13px; }
-.preview { display: grid; gap: 16px; }
-.preview img { width: 100%; max-height: 60dvh; object-fit: contain; border-radius: 12px; background: #111; }
+.preview { display: grid; gap: 12px; }
+.preview img { width: 100%; max-height: 42dvh; object-fit: contain; border-radius: 12px; background: #111; }
 .side { display: flex; flex-direction: column; gap: 8px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 8px; }
+.actions.primary { margin-top: 0; button:last-child { flex: 1; height: 48px; font-weight: 800; } }
+@media (min-width: 840px) { .actions.primary button:last-child { flex: none; } }
 .actions.center { justify-content: center; margin: 16px 0; }
 .processing { position: relative; border-radius: 16px; overflow: hidden; background: #111; min-height: 320px; }
 .processing .dim { width: 100%; max-height: 60dvh; object-fit: contain; opacity: .35; display: block; }
