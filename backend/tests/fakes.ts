@@ -34,6 +34,17 @@ export const CARDS: (CatalogCardSummary & { rarity: string })[] = [
   { externalId: 'swsh1-136', name: 'Cufant', localNumber: '136', setId: 'swsh1', image: img('swsh/swsh1/136'), rarity: 'Common' },
 ];
 
+/** Versões em português de algumas cartas (as demais não existem em pt, como na TCGdex). */
+export const PT_CARDS: Record<string, { name: string; setName: string; image: { small: string; large: string } | null }> = {
+  'sv03.5-025': {
+    name: 'Pikachu',
+    setName: '151',
+    image: { small: 'https://assets.tcgdex.net/pt/sv/sv03.5/025/low.webp', large: 'https://assets.tcgdex.net/pt/sv/sv03.5/025/high.webp' },
+  },
+  // Existe em pt, mas sem imagem em pt: a carteira usa a imagem em inglês.
+  'swsh10-136': { name: 'Colônia Cancelante', setName: 'Astros Radiantes', image: null },
+};
+
 /** Fornecedor de catálogo em memória, com contadores e modo "fora do ar". */
 export class FakeCatalog implements CardCatalogProvider {
   readonly providerId = 'tcgdex';
@@ -59,11 +70,18 @@ export class FakeCatalog implements CardCatalogProvider {
     return this.searchCards({ localNumber, setId: options.setId });
   }
 
-  async getCardById(id: string): Promise<CatalogCard | null> {
+  async getCardById(id: string, language: 'en' | 'pt' = 'en'): Promise<CatalogCard | null> {
     this.guard();
     const c = CARDS.find((x) => x.externalId === id);
     if (!c) return null;
     const set = SETS.find((s) => s.externalId === c.setId) ?? { externalId: c.setId!, name: c.setId!, logoUrl: null, symbolUrl: null, officialCount: null, totalCount: null };
+    const pt = language === 'pt' ? PT_CARDS[id] : undefined;
+    if (pt) {
+      // Como a TCGdex: sem imagem no idioma, o campo vem ausente.
+      const card = await this.getCardById(id, 'en');
+      this.calls--;
+      return { ...card!, name: pt.name, image: pt.image, set: { ...set, name: pt.setName }, language: 'pt' };
+    }
     return {
       provider: 'tcgdex',
       externalId: c.externalId,

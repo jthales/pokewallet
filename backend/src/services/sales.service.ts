@@ -4,6 +4,22 @@ import { SaleRepository } from '../repositories/sale.repository.js';
 import type { SellItemInput, UpdateSaleInput } from '../schemas/index.js';
 import { costInBRL } from './portfolio.service.js';
 import { realizedResult } from './portfolio-analytics.js';
+import { localizeCard } from './card-localization.js';
+
+type ItemWithCard = Prisma.CollectionItemGetPayload<{ include: { cardCatalog: { include: { localizations: true } } } }>;
+
+/** Carta da venda com nome/imagem no idioma do exemplar vendido. */
+function toSaleCard(item: ItemWithCard) {
+  const loc = localizeCard(item.cardCatalog, item.cardCatalog.localizations, item.language);
+  return {
+    id: item.cardCatalog.id,
+    name: loc.name,
+    setName: loc.setName,
+    localNumber: item.cardCatalog.localNumber,
+    imageUrl: loc.imageUrl,
+    imageFallbackUrl: loc.imageFallbackUrl,
+  };
+}
 
 export class SalesService {
   private readonly sales: SaleRepository;
@@ -87,13 +103,7 @@ export class SalesService {
           purchaseCurrency: s.collectionItem.currency,
           costCents: costInBRL(s.collectionItem),
         },
-        card: {
-          id: s.collectionItem.cardCatalog.id,
-          name: s.collectionItem.cardCatalog.name,
-          setName: s.collectionItem.cardCatalog.setName,
-          localNumber: s.collectionItem.cardCatalog.localNumber,
-          imageUrl: s.collectionItem.cardCatalog.imageUrl,
-        },
+        card: toSaleCard(s.collectionItem),
       })),
     };
   }

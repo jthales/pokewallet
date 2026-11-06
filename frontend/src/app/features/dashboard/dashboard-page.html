@@ -52,7 +52,7 @@
     <div class="card-grid">
       @for (card of data()?.recentCards; track card.id) {
         <a class="tile" [routerLink]="['/colecao', card.id]">
-          <app-card-image [src]="card.imageUrl" [alt]="card.name" />
+          <app-card-image [src]="card.imageUrl" [fallback]="card.imageFallbackUrl" [alt]="card.name" />
           <div class="name">{{ card.name }}</div>
           <div class="meta">{{ card.setName }} · {{ card.localNumber }}</div>
         </a>

@@ -1,4 +1,4 @@
-import type { CardCatalog, CardPriceSnapshot, CollectionItem, PrismaClient, Sale } from '@prisma/client';
+import type { CardCatalog, CardCatalogLocalization, CardPriceSnapshot, CollectionItem, PrismaClient, Sale } from '@prisma/client';
 import { MARKETPLACES, type Marketplace } from '../integrations/market-price-provider.js';
 import { notFound } from '../lib/errors.js';
 import { convertCents, dateToDay, dayKey, decimalToCents } from '../lib/decimal.js';
@@ -6,6 +6,7 @@ import type { ExchangeRateService, SupportedCurrency } from './exchange-rate.ser
 import type { PriceHistoryService } from './price-history.service.js';
 import { performance, portfolioHistory, rankings, realizedResult, summarize, type Performance, type PortfolioItem, type RankingSort, type ValueSource } from './portfolio-analytics.js';
 import type { SettingsService } from './settings.service.js';
+import { localizeCard } from './card-localization.js';
 
 export const PERIODS = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, all: null } as const;
 export type Period = keyof typeof PERIODS;
@@ -14,7 +15,7 @@ export const DISCLAIMER =
   'Cotações são referências de mercado (TCGdex: Cardmarket/TCGplayer), não ofertas garantidas de compra ou venda. ' +
   'Não há ajuste pela condição física do exemplar, que pode valer mais ou menos que a referência.';
 
-type ItemRow = CollectionItem & { cardCatalog: CardCatalog; sales: Sale[] };
+type ItemRow = CollectionItem & { cardCatalog: CardCatalog & { localizations: CardCatalogLocalization[] }; sales: Sale[] };
 
 export interface QuoteView {
   marketplace: string;
@@ -31,7 +32,7 @@ export interface QuoteView {
 }
 
 export interface ItemValuation extends PortfolioItem {
-  card: { id: string; name: string; setName: string; localNumber: string; imageUrl: string | null };
+  card: { id: string; name: string; setName: string; localNumber: string; imageUrl: string | null; imageFallbackUrl: string | null };
   condition: string;
   acquiredAt: Date | null;
   purchasePriceCents: number | null;
@@ -170,7 +171,7 @@ export class PortfolioService {
     const rows: ItemRow[] = await this.prisma.collectionItem.findMany({
       where,
       orderBy: { createdAt: 'asc' },
-      include: { cardCatalog: true, sales: { where: { cancelledAt: null } } },
+      include: { cardCatalog: { include: { localizations: true } }, sales: { where: { cancelledAt: null } } },
     });
     await this.resolveForeignCosts(rows);
     const latest = await this.history.latest([...new Set(rows.map((r) => r.cardCatalogId))], marketplace);
@@ -189,10 +190,11 @@ export class PortfolioService {
       const costCents = costInBRL(r);
       const active = r.sales[0] ?? null;
       const sale = r.status === 'SOLD' && active ? { priceCents: active.salePriceCents, feesCents: active.feesCents, soldAt: active.soldAt } : null;
+      const loc = localizeCard(r.cardCatalog, r.cardCatalog.localizations, r.language);
       return {
         id: r.id,
         cardId: r.cardCatalogId,
-        card: { id: r.cardCatalog.id, name: r.cardCatalog.name, setName: r.cardCatalog.setName, localNumber: r.cardCatalog.localNumber, imageUrl: r.cardCatalog.imageUrl },
+        card: { id: r.cardCatalog.id, name: loc.name, setName: loc.setName, localNumber: r.cardCatalog.localNumber, imageUrl: loc.imageUrl, imageFallbackUrl: loc.imageFallbackUrl },
         variant: r.variant,
         condition: r.condition,
         status: r.status,
@@ -274,6 +276,7 @@ function rankingView(i: ItemValuation) {
     setName: i.card.setName,
     localNumber: i.card.localNumber,
     imageUrl: i.card.imageUrl,
+    imageFallbackUrl: i.card.imageFallbackUrl,
     variant: i.variant,
     condition: i.condition,
     valueSource: i.valueSource,

@@ -39,10 +39,29 @@ model CardCatalog {
   pricesErrorAt   DateTime?
   items           CollectionItem[]
   priceSnapshots  CardPriceSnapshot[]
+  localizations   CardCatalogLocalization[]
 
   @@unique([provider, externalId])
   @@index([name])
   @@index([setId])
+}
+
+/// Nome e imagem de uma carta em outro idioma do catálogo (ex.: pt), usados quando o exemplar é desse idioma.
+/// `name` nulo indica que o fornecedor não tem a carta nesse idioma (evita consultar de novo a cada acesso).
+model CardCatalogLocalization {
+  id            String      @id @default(cuid())
+  cardCatalogId String
+  cardCatalog   CardCatalog @relation(fields: [cardCatalogId], references: [id], onDelete: Cascade)
+  language      String
+  name          String?
+  setName       String?
+  /// Imagem no idioma; nula quando o fornecedor não tem imagem nesse idioma (usa-se a imagem em inglês).
+  imageUrl      String?
+  imageLargeUrl String?
+  fetchedAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([cardCatalogId, language])
 }
 
 /// Um exemplar físico de uma carta.

@@ -44,7 +44,7 @@
     @for (s of history()!.sales; track s.id) {
       <li class="panel row" [class.cancelled]="s.cancelledAt">
         <a [routerLink]="['/colecao', s.card.id]" class="thumb-link" [attr.aria-label]="'Abrir ' + s.card.name">
-          <app-card-image class="thumb" [src]="s.card.imageUrl" [alt]="s.card.name" />
+          <app-card-image class="thumb" [src]="s.card.imageUrl" [fallback]="s.card.imageFallbackUrl" [alt]="s.card.name" />
         </a>
         <div class="grow">
           <div class="title">
