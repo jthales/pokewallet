@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.string().min(1).default('file:./dev.db'),
+  DATABASE_URL: z.string().min(1),
   TCGDEX_BASE_URL: z.url().default('https://api.tcgdex.net/v2'),
   CATALOG_CACHE_TTL_SECONDS: z.coerce.number().int().nonnegative().default(21600),
   CATALOG_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),

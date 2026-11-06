@@ -1,0 +1,15 @@
+# Banco PostgreSQL local para desenvolvimento e testes: `docker compose up -d`
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pokewallet
+      POSTGRES_PASSWORD: pokewallet
+      POSTGRES_DB: pokewallet
+    ports:
+      - '5432:5432'
+    volumes:
+      - pokewallet-db:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+volumes:
+  pokewallet-db:

@@ -1,13 +1,18 @@
-// PokéWallet — modelo de dados local (SQLite).
+// PokéWallet — modelo de dados (PostgreSQL: local via Docker, produção via Neon no Vercel).
 // Valores monetários são armazenados em centavos (Int) para evitar erros de ponto flutuante.
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Conexão usada pela aplicação (no Neon, a URL com pooling).
+  url       = env("DATABASE_URL")
+  // Conexão direta usada pelas migrations (no Neon, a URL sem pooling).
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "rhel-openssl-3.0.x" é o ambiente das funções serverless do Vercel.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 /// Cópia local dos metadados de uma carta de um fornecedor de catálogo (ex.: TCGdex).
