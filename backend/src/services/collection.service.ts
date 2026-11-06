@@ -90,6 +90,9 @@ export class CollectionService {
         language: input.language,
         acquiredAt: input.acquiredAt ?? null,
         purchasePriceCents: input.purchasePriceCents ?? null,
+        currency: input.currency ?? 'BRL',
+        manualValueCents: input.manualValueCents ?? null,
+        manualValueAt: input.manualValueCents != null ? new Date() : null,
         notes: input.notes ?? null,
       })),
     );
@@ -149,7 +152,14 @@ export class CollectionService {
   async updateItem(id: string, input: UpdateItemInput) {
     const existing = await this.items.findById(id);
     if (!existing) throw notFound('Exemplar');
-    const updated = await this.items.update(id, input);
+    const data: Prisma.CollectionItemUpdateInput = { ...input };
+    // Mudou preço, moeda ou data: o câmbio de aquisição salvo deixa de valer e será recalculado.
+    if (input.purchasePriceCents !== undefined || input.currency !== undefined || input.acquiredAt !== undefined) {
+      data.purchaseFxRate = null;
+      data.purchaseFxDate = null;
+    }
+    if (input.manualValueCents !== undefined) data.manualValueAt = input.manualValueCents === null ? null : new Date();
+    const updated = await this.items.update(id, data);
     return toItemView({ ...updated, sales: existing.sales });
   }
 
@@ -196,6 +206,8 @@ export function toItemView(item: CollectionItem & { sales?: Sale[] }) {
     acquiredAt: item.acquiredAt,
     purchasePriceCents: item.purchasePriceCents,
     currency: item.currency,
+    manualValueCents: item.manualValueCents,
+    manualValueAt: item.manualValueAt,
     notes: item.notes,
     status: item.status,
     createdAt: item.createdAt,

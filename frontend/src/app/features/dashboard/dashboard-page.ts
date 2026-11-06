@@ -7,10 +7,11 @@ import { Dashboard } from '../../core/models';
 import { CardImage } from '../../shared/card-image';
 import { EmptyState } from '../../shared/empty-state';
 import { SkeletonGrid } from '../../shared/skeleton-grid';
+import { PortfolioSection } from './portfolio-section';
 
 @Component({
   selector: 'app-dashboard-page',
-  imports: [RouterLink, MatButtonModule, MatIconModule, CardImage, EmptyState, SkeletonGrid],
+  imports: [RouterLink, MatButtonModule, MatIconModule, CardImage, EmptyState, SkeletonGrid, PortfolioSection],
   templateUrl: './dashboard-page.html',
   styleUrl: './dashboard-page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

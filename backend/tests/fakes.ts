@@ -89,3 +89,53 @@ export class FakeCatalog implements CardCatalogProvider {
 }
 
 export const sameNumber = (a: string, b: string) => normalizeLocalNumber(a) === normalizeLocalNumber(b);
+
+import type { ExchangeRateSource, FetchedRate } from '../src/integrations/frankfurter/frankfurter.source.js';
+import { ExchangeRateUnavailableError } from '../src/integrations/frankfurter/frankfurter.source.js';
+import { PriceSourceUnavailableError, type MarketPriceProvider, type MarketQuote } from '../src/integrations/market-price-provider.js';
+
+type QuoteInput = Omit<MarketQuote, 'sourceUpdatedAt'> & { sourceUpdatedAt?: Date | null };
+
+/** Fonte de preços em memória: cotações configuráveis por carta, contador de chamadas e modo "fora do ar". */
+export class FakePrices implements MarketPriceProvider {
+  readonly id = 'tcgdex';
+  down = false;
+  calls: string[] = [];
+  quotes = new Map<string, QuoteInput[]>();
+
+  set(externalId: string, quotes: QuoteInput[]) {
+    this.quotes.set(externalId, quotes);
+  }
+
+  async getQuotes(externalId: string): Promise<MarketQuote[] | null> {
+    this.calls.push(externalId);
+    if (this.down) throw new PriceSourceUnavailableError('fora do ar');
+    return (this.quotes.get(externalId) ?? []).map((q) => ({ sourceUpdatedAt: null, ...q }));
+  }
+}
+
+/** Fonte de câmbio em memória. */
+export class FakeFx implements ExchangeRateSource {
+  readonly id = 'fake';
+  down = false;
+  calls: { base: string; date?: string }[] = [];
+  rates: Record<string, string> = { EUR: '6.00', USD: '5.50' };
+  date = '2026-11-05';
+
+  async fetchRate(base: string, _quote: string, date?: string): Promise<FetchedRate> {
+    this.calls.push({ base, date });
+    if (this.down) throw new ExchangeRateUnavailableError('fora do ar');
+    const rate = this.rates[base];
+    if (!rate) throw new ExchangeRateUnavailableError('moeda desconhecida');
+    return { rate, date: date ?? this.date };
+  }
+}
+
+/** Relógio controlável para testar cache e cotações desatualizadas. */
+export class Clock {
+  constructor(public current = new Date('2026-11-05T15:00:00Z')) {}
+  now = () => this.current;
+  advanceHours(h: number) {
+    this.current = new Date(this.current.getTime() + h * 3_600_000);
+  }
+}

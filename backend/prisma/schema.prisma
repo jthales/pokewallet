@@ -31,7 +31,14 @@ model CardCatalog {
   metadata    Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
-  items       CollectionItem[]
+  /// Última consulta de preços bem-sucedida (com ou sem cotação disponível).
+  pricesCheckedAt DateTime?
+  /// Resultado da última tentativa: OK | NO_PRICING | ERROR.
+  pricesStatus    String?
+  /// Momento da última falha ao consultar preços (para não insistir a cada requisição).
+  pricesErrorAt   DateTime?
+  items           CollectionItem[]
+  priceSnapshots  CardPriceSnapshot[]
 
   @@unique([provider, externalId])
   @@index([name])
@@ -48,7 +55,14 @@ model CollectionItem {
   language           String // idioma físico do exemplar (ex.: pt, en, ja) — independente do idioma de consulta
   acquiredAt         DateTime?
   purchasePriceCents Int?
+  /// Moeda do preço de aquisição (BRL | USD | EUR).
   currency           String      @default("BRL")
+  /// Câmbio usado para converter um preço de aquisição em moeda estrangeira para BRL (data da aquisição).
+  purchaseFxRate     Decimal?    @db.Decimal(18, 8)
+  purchaseFxDate     DateTime?   @db.Date
+  /// Avaliação manual em BRL, usada só quando não há cotação de mercado compatível.
+  manualValueCents   Int?
+  manualValueAt      DateTime?
   notes              String?
   status             String      @default("AVAILABLE") // AVAILABLE | SOLD
   createdAt          DateTime    @default(now())
@@ -66,6 +80,8 @@ model Sale {
   collectionItem   CollectionItem @relation(fields: [collectionItemId], references: [id], onDelete: Cascade)
   soldAt           DateTime
   salePriceCents   Int
+  /// Custos da venda (frete, taxas do marketplace etc.), em centavos. Null = nenhum custo registrado.
+  feesCents        Int?
   currency         String         @default("BRL")
   notes            String?
   cancelledAt      DateTime?
@@ -74,4 +90,49 @@ model Sale {
 
   @@index([collectionItemId])
   @@index([soldAt])
+}
+
+/// Cotação de mercado de uma carta num dia, para um marketplace e uma variante.
+/// Guarda o valor original, a moeda e o câmbio usado na conversão para BRL.
+/// No máximo um registro por carta + marketplace + variante + dia (`capturedOn`).
+model CardPriceSnapshot {
+  id               String      @id @default(cuid())
+  cardCatalogId    String
+  cardCatalog      CardCatalog @relation(fields: [cardCatalogId], references: [id], onDelete: Cascade)
+  provider         String // cardmarket | tcgplayer
+  variant          String // NORMAL | HOLOFOIL | REVERSE_HOLOFOIL | FIRST_EDITION
+  currency         String // EUR | USD
+  marketPrice      Decimal     @db.Decimal(14, 4)
+  /// Campo do fornecedor usado (ex.: "trend", "trend-holo", "holofoil.marketPrice").
+  priceField       String
+  priceBRL         Decimal     @db.Decimal(14, 2)
+  exchangeRate     Decimal     @db.Decimal(18, 8)
+  exchangeRateDate DateTime    @db.Date
+  sourceUpdatedAt  DateTime?
+  capturedAt       DateTime    @default(now())
+  /// Dia da captura (fuso America/Sao_Paulo).
+  capturedOn       DateTime    @db.Date
+
+  @@unique([cardCatalogId, provider, variant, capturedOn])
+  @@index([provider, capturedOn])
+}
+
+/// Cotação cambial diária (fonte: Frankfurter). Uma linha por par e data de referência.
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(18, 8)
+  rateDate  DateTime @db.Date
+  fetchedAt DateTime @default(now())
+
+  @@unique([base, quote, rateDate])
+  @@index([base, quote, fetchedAt])
+}
+
+/// Preferências do usuário (chave/valor), ex.: marketplace de referência.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

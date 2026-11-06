@@ -28,6 +28,70 @@
     </div>
   </div>
 
+
+  <section class="perf panel" aria-labelledby="perf-title">
+    <h2 id="perf-title">Desempenho financeiro</h2>
+    @if (perfLoading() && !perf()) {
+      <div class="sk w80"></div><div class="sk w60"></div>
+    } @else if (perfError()) {
+      <p class="notice"><mat-icon aria-hidden="true">cloud_off</mat-icon><span>{{ perfError() }}</span></p>
+    } @else if (perf(); as p) {
+      @if (available().length) {
+        <div class="perf-kpis">
+          <div><span class="k">Você pagou</span><span class="v">{{ heldTotals().paidCents | brl }}</span></div>
+          <div><span class="k">Vale hoje (aprox.)</span><span class="v">{{ heldTotals().valueCents | brl }}</span></div>
+          <div><span class="k">Valorização</span><app-delta class="v" [cents]="heldTotals().gainCents" [pct]="heldTotals().gainPct" emptyLabel="Sem dados suficientes" /></div>
+        </div>
+        @if (heldTotals().incomplete) {
+          <p class="muted small">{{ heldTotals().incomplete }} exemplar(es) disponível(is) sem preço pago ou sem cotação ficam fora da valorização.</p>
+        }
+      }
+
+      <ul class="quotes">
+        @for (vq of variantQuotes(); track vq.variant) {
+          <li>
+            <span class="chip">{{ vq.variant | variant }}</span>
+            @if (vq.quote; as q) {
+              <span>
+                <strong>{{ q.priceCents | brl }}</strong>
+                <span class="muted"> = {{ foreign(q.marketPrice, q.currency) }} × {{ rate(q.exchangeRate) }} ({{ q.exchangeRateDate | date: 'dd/MM' : 'UTC' }}) · {{ marketplaceLabel(q.marketplace) }} {{ q.priceField }}</span>
+              </span>
+              @if (q.stale) {
+                <span class="notice inline"><mat-icon aria-hidden="true">schedule</mat-icon>Desatualizada · {{ q.capturedAt | date: 'dd/MM HH:mm' }}</span>
+              }
+            } @else {
+              <span class="muted">Preço indisponível nesta fonte para esta variante.</span>
+              <button mat-button (click)="editVariant(vq.variant)"><mat-icon>edit</mat-icon>Avaliação manual</button>
+            }
+          </li>
+        }
+      </ul>
+      @if (p.pricesCheckedAt) {
+        <p class="muted small">Cotação consultada em {{ p.pricesCheckedAt | date: 'dd/MM/yyyy HH:mm' }} · fonte de referência: {{ marketplaceLabel(p.priceSource) }} (altere em Início › Minha carteira).</p>
+      } @else if (p.pricesStatus === 'ERROR') {
+        <p class="notice"><mat-icon aria-hidden="true">cloud_off</mat-icon><span>Não foi possível consultar as cotações agora. Tentaremos de novo no próximo acesso.</span></p>
+      }
+
+      @if (chartVariants().length) {
+        <div class="chart-head">
+          <h3>Histórico de preço</h3>
+          @if (chartVariants().length > 1) {
+            <div class="chips" role="group" aria-label="Variante do gráfico">
+              @for (v of chartVariants(); track v) {
+                <button mat-stroked-button class="chip-btn" [class.on]="v === selectedVariant()" [attr.aria-pressed]="v === selectedVariant()" (click)="chartVariant.set(v)">{{ v | variant }}</button>
+              }
+            </div>
+          }
+        </div>
+        <app-line-chart [series]="chartSeries()" [format]="formatBrl" [zeroBased]="false" [ariaLabel]="'Histórico de preço, ' + selectedVariant()" />
+        @if (chartPoints().length < 2) {
+          <p class="notice info"><mat-icon aria-hidden="true">timeline</mat-icon><span>Preço atual registrado. O histórico está sendo construído, um ponto por dia em que o app é usado.</span></p>
+        }
+      }
+      <p class="muted small disclaimer">{{ p.disclaimer }}</p>
+    }
+  </section>
+
   <section class="items">
     <h2>Exemplares disponíveis ({{ available().length }})</h2>
     @if (!available().length) {
@@ -48,9 +112,19 @@
                 <span>Adquirida em {{ item.acquiredAt | date: 'dd/MM/yyyy' : 'UTC' }}</span>
               }
               @if (item.purchasePriceCents !== null) {
-                <span>Pago: {{ item.purchasePriceCents | brl }}</span>
+                <span>Pago: {{ item.currency === 'BRL' ? (item.purchasePriceCents | brl) : foreign((item.purchasePriceCents / 100).toFixed(2), item.currency) }}</span>
               }
             </div>
+            @if (itemPerf(item.id); as ip) {
+              <div class="details value-line">
+                @if (ip.valueCents !== null) {
+                  <span>Vale ≈ <strong>{{ ip.valueCents | brl }}</strong>@if (ip.valueSource === 'MANUAL') { <span class="chip">avaliação manual</span>}</span>
+                  <app-delta [cents]="ip.gainCents" [pct]="ip.gainPct" emptyLabel="Sem preço pago" />
+                } @else {
+                  <span>Preço indisponível</span>
+                }
+              </div>
+            }
             @if (item.notes) {
               <p class="notes">{{ item.notes }}</p>
             }
@@ -82,10 +156,19 @@
               @if (item.activeSale; as s) {
                 <div class="details">
                   <span>Vendido em {{ s.soldAt | date: 'dd/MM/yyyy' : 'UTC' }} por <strong>{{ s.salePriceCents | brl }}</strong></span>
-                  @if (item.purchasePriceCents !== null) {
-                    <span>Pago: {{ item.purchasePriceCents | brl }}</span>
+                  @if (s.feesCents) {
+                    <span>Custos: {{ s.feesCents | brl }}</span>
+                  }
+                  @if ((itemPerf(item.id)?.costCents ?? null) !== null) {
+                    <span>Pago: {{ itemPerf(item.id)!.costCents | brl }}</span>
                   }
                 </div>
+                @if (itemPerf(item.id); as ip) {
+                  <div class="details value-line">
+                    <span>Resultado realizado:</span>
+                    <app-delta [cents]="ip.realizedCents" emptyLabel="sem preço pago" />
+                  </div>
+                }
                 @if (s.notes) {
                   <p class="notes">{{ s.notes }}</p>
                 }

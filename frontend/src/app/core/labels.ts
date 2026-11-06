@@ -51,3 +51,23 @@ export function variantOptionsFor(variants: CatalogVariants | null | undefined) 
 }
 
 export const CONFIDENCE_LABEL = { high: 'Alta confiança', medium: 'Média confiança', low: 'Baixa confiança' } as const;
+
+export const MARKETPLACE_OPTIONS = [
+  { value: 'cardmarket', label: 'Cardmarket', currency: 'EUR' },
+  { value: 'tcgplayer', label: 'TCGplayer', currency: 'USD' },
+] as const;
+export const marketplaceLabel = (v: string) => MARKETPLACE_OPTIONS.find((o) => o.value === v)?.label ?? v;
+
+export const PURCHASE_CURRENCY_OPTIONS = [
+  { value: 'BRL', label: 'Real (R$)', prefix: 'R$' },
+  { value: 'USD', label: 'Dólar (US$)', prefix: 'US$' },
+  { value: 'EUR', label: 'Euro (€)', prefix: '€' },
+] as const;
+
+export const PERIOD_OPTIONS = [
+  { value: '7d', label: '7 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: '90d', label: '90 dias' },
+  { value: '1y', label: '1 ano' },
+  { value: 'all', label: 'Tudo' },
+] as const;

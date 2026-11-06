@@ -1,0 +1,163 @@
+<section class="portfolio" aria-labelledby="pf-title">
+  <div class="head">
+    <div>
+      <h2 id="pf-title">Minha carteira</h2>
+      @if (data(); as d) {
+        <p class="meta">
+          {{ marketplaceLabel(d.priceSource) }} · valores em R$
+          @if (d.meta.lastUpdatedAt) {
+            · atualizado em {{ d.meta.lastUpdatedAt | date: 'dd/MM HH:mm' }}
+          }
+          @if (d.priceSource === 'cardmarket' && d.meta.fx.EUR; as fx) {
+            · €1 = R$ {{ rate(fx.rate) }} ({{ fx.rateDate | date: 'dd/MM' : 'UTC' }})
+          }
+          @if (d.priceSource === 'tcgplayer' && d.meta.fx.USD; as fx) {
+            · US$1 = R$ {{ rate(fx.rate) }} ({{ fx.rateDate | date: 'dd/MM' : 'UTC' }})
+          }
+        </p>
+      }
+    </div>
+    <div class="tools">
+      @if (data(); as d) {
+        <mat-select class="source" [value]="d.priceSource" (selectionChange)="setMarketplace($event.value)" aria-label="Fonte de preços">
+          @for (m of marketplaces; track m.value) {
+            <mat-option [value]="m.value">{{ m.label }} ({{ m.currency }})</mat-option>
+          }
+        </mat-select>
+      }
+      <button mat-stroked-button (click)="refresh()" [disabled]="refreshing()" aria-label="Atualizar cotações">
+        @if (refreshing()) {
+          <mat-spinner diameter="18" />
+        } @else {
+          <mat-icon>refresh</mat-icon>
+        }
+        {{ refreshing() ? 'Atualizando…' : 'Atualizar' }}
+      </button>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="panel err" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon><span>{{ error() }}</span>
+      <button mat-button (click)="load()">Tentar novamente</button>
+    </div>
+  }
+
+  <div class="kpis" aria-live="polite">
+    @if (loading()) {
+      @for (i of [1, 2, 3, 4]; track i) {
+        <div class="kpi panel"><span class="sk w50"></span><span class="sk w80 big"></span><span class="sk w60"></span></div>
+      }
+    } @else if (data(); as d) {
+      <div class="kpi panel main">
+        <span class="label">Patrimônio estimado</span>
+        <span class="value">{{ d.summary.estimatedValueCents | brl }}</span>
+        <span class="sub">
+          {{ d.summary.holdings.valued }} de {{ d.summary.holdings.items }} exemplares com valor
+          @if (d.summary.holdings.manualValued) {
+            ({{ d.summary.holdings.manualValued }} por avaliação manual)
+          }
+        </span>
+      </div>
+      <div class="kpi panel">
+        <span class="label">Capital investido</span>
+        <span class="value">{{ d.summary.investedCents | brl }}</span>
+        <span class="sub">
+          {{ d.summary.holdings.withCost }} exemplares com preço pago
+          @if (d.summary.holdings.withoutCost) {
+            · {{ d.summary.holdings.withoutCost }} sem
+          }
+        </span>
+      </div>
+      <div class="kpi panel">
+        <span class="label">Valorização não realizada</span>
+        <app-delta class="value-delta" [cents]="d.summary.unrealized.eligibleItems ? d.summary.unrealized.gainCents : null" [pct]="d.summary.unrealized.gainPct" emptyLabel="Sem dados suficientes" />
+        <span class="sub">Sobre {{ d.summary.unrealized.eligibleItems }} exemplar(es) com custo e cotação ({{ d.summary.unrealized.costBasisCents | brl }} investidos)</span>
+      </div>
+      <div class="kpi panel">
+        <span class="label">Lucro realizado</span>
+        <app-delta class="value-delta" [cents]="d.summary.realized.eligibleSales ? d.summary.realized.resultCents : null" emptyLabel="Nenhuma venda com custo" />
+        <span class="sub">
+          {{ d.summary.realized.sales }} venda(s), {{ d.summary.realized.grossCents | brl }} brutos
+          @if (d.summary.realized.salesWithoutCost) {
+            · {{ d.summary.realized.salesWithoutCost }} sem preço pago, fora do cálculo
+          }
+        </span>
+      </div>
+      <div class="kpi panel total">
+        <span class="label">Resultado total conhecido</span>
+        <app-delta class="value-delta" [cents]="d.summary.totalKnownResultCents" />
+        <span class="sub">Lucro realizado + valorização não realizada, apenas dos exemplares com dados completos.</span>
+      </div>
+    }
+  </div>
+
+  @if (notices().length) {
+    <div class="notices">
+      @for (n of notices(); track n.text) {
+        <div class="notice" [class.info]="n.info"><mat-icon aria-hidden="true">{{ n.icon }}</mat-icon><span>{{ n.text }}</span></div>
+      }
+    </div>
+  }
+
+  <div class="panel chart-card">
+    <div class="chart-head">
+      <h3>Evolução do patrimônio</h3>
+      <mat-button-toggle-group [value]="period()" (change)="setPeriod($event.value)" aria-label="Período" hideSingleSelectionIndicator>
+        @for (p of periods; track p.value) {
+          <mat-button-toggle [value]="p.value">{{ p.label }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    @if (historyLoading() && !history()) {
+      <div class="sk chart-sk"></div>
+    } @else if (history(); as h) {
+      @if (!h.points.length) {
+        <p class="muted empty">Ainda não há cotações salvas. O histórico começa a partir da primeira atualização de preços.</p>
+      } @else {
+        <app-line-chart [series]="series()" [format]="formatBrl" ariaLabel="Evolução do patrimônio estimado e do capital aplicado" />
+        @if (h.buildingHistory) {
+          <p class="notice info"><mat-icon aria-hidden="true">timeline</mat-icon><span>Só existe um registro até agora: o histórico está sendo construído, um ponto por dia de uso do app.</span></p>
+        }
+        <p class="muted note">{{ h.note }}</p>
+      }
+    }
+  </div>
+
+  @if (data(); as d) {
+    <div class="rank-head">
+      <h3>Ranking de valorização</h3>
+      <mat-button-toggle-group [value]="sort()" (change)="setSort($event.value)" aria-label="Ordenar ranking por" hideSingleSelectionIndicator>
+        <mat-button-toggle value="absolute">Em R$</mat-button-toggle>
+        <mat-button-toggle value="percent">Em %</mat-button-toggle>
+      </mat-button-toggle-group>
+    </div>
+    <div class="ranks">
+      @for (block of [{ title: 'Maiores valorizações', icon: 'trending_up', list: d.rankings.gainers }, { title: 'Maiores desvalorizações', icon: 'trending_down', list: d.rankings.losers }]; track block.title) {
+        <div class="panel rank">
+          <h4><mat-icon aria-hidden="true">{{ block.icon }}</mat-icon>{{ block.title }}</h4>
+          @if (!block.list.length) {
+            <p class="muted">Nenhum exemplar com preço pago e cotação nesta categoria.</p>
+          }
+          <ol>
+            @for (r of block.list; track r.itemId) {
+              <li>
+                <a [routerLink]="['/colecao', r.cardId]" class="row">
+                  <app-card-image class="thumb" [src]="r.imageUrl" [alt]="r.name" />
+                  <div class="txt">
+                    <strong>{{ r.name }}</strong>
+                    <span class="muted">{{ r.setName }} · {{ r.variant | variant }}</span>
+                    <span class="muted">Pago {{ r.costCents | brl }}</span>
+                    <span class="muted">Hoje {{ r.valueCents | brl }}@if (r.valueSource === 'MANUAL') { (manual)}</span>
+                  </div>
+                  <app-delta class="d" [cents]="r.gainCents" [pct]="r.gainPct" />
+                </a>
+              </li>
+            }
+          </ol>
+        </div>
+      }
+    </div>
+    <p class="muted disclaimer"><mat-icon aria-hidden="true">info</mat-icon>{{ d.meta.disclaimer }}</p>
+  }
+</section>

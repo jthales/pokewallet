@@ -7,8 +7,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { ApiService } from '../core/api.service';
 import { toDateInput } from '../core/date';
-import { CONDITION_OPTIONS, LANGUAGE_OPTIONS, variantOptionsFor } from '../core/labels';
-import { CatalogVariants, CollectionItem, Condition, PhysicalLanguage, Variant } from '../core/models';
+import { CONDITION_OPTIONS, LANGUAGE_OPTIONS, PURCHASE_CURRENCY_OPTIONS, variantOptionsFor } from '../core/labels';
+import { CatalogVariants, CollectionItem, Condition, PhysicalLanguage, PurchaseCurrency, Variant } from '../core/models';
 import { centsToInput, parseMoneyToCents } from '../core/money';
 import { NotifyService } from '../core/notify.service';
 import { CardImage } from './card-image';
@@ -92,9 +92,30 @@ export function moneyValidator(control: AbstractControl): ValidationErrors | nul
         </mat-form-field>
         <mat-form-field>
           <mat-label>Preço pago (opcional)</mat-label>
-          <span matTextPrefix>R$&nbsp;</span>
+          <span matTextPrefix>{{ currencyPrefix() }}&nbsp;</span>
           <input matInput formControlName="price" inputmode="decimal" placeholder="0,00" />
+          <mat-hint>Sem preço pago, a carta aparece no patrimônio mas não na rentabilidade.</mat-hint>
           @if (form.controls.price.invalid) {
+            <mat-error>Use o formato 12,50.</mat-error>
+          }
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Moeda da compra</mat-label>
+          <mat-select formControlName="currency">
+            @for (o of currencies; track o.value) {
+              <mat-option [value]="o.value">{{ o.label }}</mat-option>
+            }
+          </mat-select>
+          @if (form.controls.currency.value !== 'BRL') {
+            <mat-hint>Convertida para reais pelo câmbio da data de aquisição.</mat-hint>
+          }
+        </mat-form-field>
+        <mat-form-field class="full">
+          <mat-label>Avaliação manual (opcional)</mat-label>
+          <span matTextPrefix>R$&nbsp;</span>
+          <input matInput formControlName="manualValue" inputmode="decimal" placeholder="0,00" />
+          <mat-hint>Usada só quando não houver cotação de mercado para esta variante; aparece marcada como "manual".</mat-hint>
+          @if (form.controls.manualValue.invalid) {
             <mat-error>Use o formato 12,50.</mat-error>
           }
         </mat-form-field>
@@ -128,6 +149,7 @@ export class ItemFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
 
   readonly conditions = CONDITION_OPTIONS;
+  readonly currencies = PURCHASE_CURRENCY_OPTIONS;
   readonly languages = LANGUAGE_OPTIONS;
   readonly variants = computed(() => {
     const options = variantOptionsFor(this.data.variants);
@@ -144,8 +166,12 @@ export class ItemFormDialog {
     language: [(this.data.item?.language ?? this.data.defaultLanguage ?? 'pt') as PhysicalLanguage, Validators.required],
     acquiredAt: [toDateInput(this.data.item?.acquiredAt)],
     price: [centsToInput(this.data.item?.purchasePriceCents), moneyValidator],
+    currency: [(this.data.item?.currency ?? 'BRL') as PurchaseCurrency],
+    manualValue: [centsToInput(this.data.item?.manualValueCents), moneyValidator],
     notes: [this.data.item?.notes ?? ''],
   });
+
+  readonly currencyPrefix = () => this.currencies.find((c) => c.value === this.form.controls.currency.value)?.prefix ?? 'R$';
 
   private defaultVariant(): Variant {
     const first = variantOptionsFor(this.data.variants)[0];
@@ -161,6 +187,8 @@ export class ItemFormDialog {
       language: v.language,
       acquiredAt: v.acquiredAt || null,
       purchasePriceCents: parseMoneyToCents(v.price),
+      currency: v.currency,
+      manualValueCents: parseMoneyToCents(v.manualValue),
       notes: v.notes.trim() || null,
     };
     this.saving.set(true);

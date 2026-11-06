@@ -27,6 +27,10 @@ html {
   --pw-skeleton: #e9ebf1;
   --pw-skeleton-shine: #f7f8fb;
   --pw-success: #1e8e3e;
+  --pw-gain: #137333;
+  --pw-loss: #b3261e;
+  --pw-warn-bg: #fff4ce;
+  --pw-warn-fg: #6b4f00;
   --pw-radius: 16px;
 }
 
@@ -89,3 +93,11 @@ h1.page-title {
 .snack-error { --mat-snack-bar-container-color: #5c1712; --mat-snack-bar-button-color: #ffb4a9; }
 
 :focus-visible { outline-color: var(--pw-blue); }
+
+/* Avisos (cotação indisponível ou desatualizada) */
+.notice {
+  display: flex; align-items: flex-start; gap: 8px; border-radius: 12px; padding: 10px 12px; font-size: 13px;
+  background: var(--pw-warn-bg); color: var(--pw-warn-fg);
+  mat-icon { flex: none; width: 20px; height: 20px; font-size: 20px; }
+  &.info { background: #e8f0fe; color: #1a4b8c; }
+}

@@ -11,3 +11,6 @@ export type ItemStatus = (typeof ITEM_STATUSES)[number];
 export const PHYSICAL_LANGUAGES = ['pt', 'en', 'es', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'other'] as const;
 
 export const DEFAULT_CURRENCY = 'BRL';
+
+/** Moedas aceitas no preço de aquisição. Valores fora de BRL são convertidos com o câmbio da data de aquisição. */
+export const PURCHASE_CURRENCIES = ['BRL', 'USD', 'EUR'] as const;

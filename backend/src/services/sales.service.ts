@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { AppError, conflict, notFound } from '../lib/errors.js';
 import { SaleRepository } from '../repositories/sale.repository.js';
 import type { SellItemInput, UpdateSaleInput } from '../schemas/index.js';
+import { costInBRL } from './portfolio.service.js';
+import { realizedResult } from './portfolio-analytics.js';
 
 export class SalesService {
   private readonly sales: SaleRepository;
@@ -20,7 +22,7 @@ export class SalesService {
         const updated = await tx.collectionItem.updateMany({ where: { id: itemId, status: 'AVAILABLE' }, data: { status: 'SOLD' } });
         if (updated.count === 0) throw conflict('ALREADY_SOLD', 'Este exemplar já está marcado como vendido.');
         return tx.sale.create({
-          data: { collectionItemId: itemId, soldAt: input.soldAt, salePriceCents: input.salePriceCents, notes: input.notes ?? null },
+          data: { collectionItemId: itemId, soldAt: input.soldAt, salePriceCents: input.salePriceCents, feesCents: input.feesCents ?? null, notes: input.notes ?? null },
         });
       });
     } catch (error) {
@@ -54,12 +56,24 @@ export class SalesService {
   async list(includeCancelled: boolean) {
     const sales = await this.sales.list(includeCancelled);
     const active = sales.filter((s) => !s.cancelledAt);
+    const realized = (s: (typeof sales)[number]) =>
+      realizedResult(costInBRL(s.collectionItem), { priceCents: s.salePriceCents, feesCents: s.feesCents });
+    const known = active.map(realized).filter((r): r is number => r !== null);
     return {
-      totals: { count: active.length, revenueCents: active.reduce((sum, s) => sum + s.salePriceCents, 0), currency: 'BRL' },
+      totals: {
+        count: active.length,
+        revenueCents: active.reduce((sum, s) => sum + s.salePriceCents, 0),
+        feesCents: active.reduce((sum, s) => sum + (s.feesCents ?? 0), 0),
+        realizedCents: known.reduce((a, b) => a + b, 0),
+        salesWithoutCost: active.length - known.length,
+        currency: 'BRL',
+      },
       sales: sales.map((s) => ({
         id: s.id,
         soldAt: s.soldAt,
         salePriceCents: s.salePriceCents,
+        feesCents: s.feesCents,
+        realizedCents: realized(s),
         currency: s.currency,
         notes: s.notes,
         cancelledAt: s.cancelledAt,
@@ -70,6 +84,8 @@ export class SalesService {
           variant: s.collectionItem.variant,
           language: s.collectionItem.language,
           purchasePriceCents: s.collectionItem.purchasePriceCents,
+          purchaseCurrency: s.collectionItem.currency,
+          costCents: costInBRL(s.collectionItem),
         },
         card: {
           id: s.collectionItem.cardCatalog.id,

@@ -9,6 +9,20 @@
     <span class="label">Total recebido</span>
     <span class="value">{{ history() ? (history()!.totals.revenueCents | brl) : '—' }}</span>
   </div>
+  <div class="panel stat wide">
+    <span class="label">Lucro realizado</span>
+    @if (history(); as h) {
+      <app-delta class="value" [cents]="h.totals.count - h.totals.salesWithoutCost > 0 ? h.totals.realizedCents : null" emptyLabel="—" />
+      <span class="muted small">
+        Venda − preço pago − custos ({{ h.totals.feesCents | brl }} em custos)
+        @if (h.totals.salesWithoutCost) {
+          · {{ h.totals.salesWithoutCost }} venda(s) sem preço pago fora do cálculo
+        }
+      </span>
+    } @else {
+      <span class="value">—</span>
+    }
+  </div>
 </section>
 
 <mat-slide-toggle [checked]="includeCancelled()" (change)="includeCancelled.set($event.checked)">Mostrar vendas desfeitas</mat-slide-toggle>
@@ -42,15 +56,23 @@
           <div class="muted meta">{{ s.card.setName }} · nº {{ s.card.localNumber }} · {{ s.item.condition | condition }} · {{ s.item.variant | variant }}</div>
           <div class="meta">
             {{ s.soldAt | date: 'dd/MM/yyyy' : 'UTC' }}
-            @if (s.item.purchasePriceCents !== null) {
-              <span class="muted"> · pago {{ s.item.purchasePriceCents | brl }}</span>
+            @if (s.item.costCents !== null) {
+              <span class="muted"> · pago {{ s.item.costCents | brl }}</span>
+            }
+            @if (s.feesCents) {
+              <span class="muted"> · custos {{ s.feesCents | brl }}</span>
             }
           </div>
           @if (s.notes) {
             <div class="muted meta notes">{{ s.notes }}</div>
           }
         </div>
-        <div class="price">{{ s.salePriceCents | brl }}</div>
+        <div class="price">
+          {{ s.salePriceCents | brl }}
+          @if (s.realizedCents !== null && !s.cancelledAt) {
+            <app-delta class="res" [cents]="s.realizedCents" />
+          }
+        </div>
         @if (!s.cancelledAt) {
           <button mat-icon-button [matMenuTriggerFor]="menu" [attr.aria-label]="'Ações da venda de ' + s.card.name"><mat-icon>more_vert</mat-icon></button>
           <mat-menu #menu="matMenu">

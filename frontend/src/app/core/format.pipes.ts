@@ -1,6 +1,6 @@
 import { Pipe, PipeTransform } from '@angular/core';
 import { conditionLabel, languageLabel, variantLabel } from './labels';
-import { formatCents } from './money';
+import { formatCents, formatPct, formatSignedCents } from './money';
 
 @Pipe({ name: 'brl' })
 export class BrlPipe implements PipeTransform {
@@ -27,5 +27,19 @@ export class VariantPipe implements PipeTransform {
 export class LanguagePipe implements PipeTransform {
   transform(v: string): string {
     return languageLabel(v);
+  }
+}
+
+@Pipe({ name: 'pct' })
+export class PctPipe implements PipeTransform {
+  transform(v: number | null | undefined): string {
+    return formatPct(v);
+  }
+}
+
+@Pipe({ name: 'signedBrl' })
+export class SignedBrlPipe implements PipeTransform {
+  transform(cents: number | null | undefined): string {
+    return formatSignedCents(cents);
   }
 }

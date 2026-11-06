@@ -4,7 +4,9 @@ import { resolve } from 'node:path';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createPrisma } from './db.js';
+import { FrankfurterExchangeRateSource } from './integrations/frankfurter/frankfurter.source.js';
 import { TcgdexCatalogService } from './integrations/tcgdex/tcgdex-catalog.service.js';
+import { TcgdexMarketPriceProvider } from './integrations/tcgdex/tcgdex-pricing.js';
 
 const config = loadConfig();
 const prisma = createPrisma();
@@ -18,6 +20,8 @@ const staticDir = resolve(process.cwd(), '../frontend/dist/frontend/browser');
 const app = createApp({
   prisma,
   catalog,
+  prices: new TcgdexMarketPriceProvider({ baseUrl: config.TCGDEX_BASE_URL, timeoutMs: config.PRICE_TIMEOUT_MS }),
+  exchangeRates: new FrankfurterExchangeRateSource({ baseUrl: config.FX_BASE_URL, timeoutMs: config.PRICE_TIMEOUT_MS }),
   corsOrigin: config.CORS_ORIGIN,
   staticDir: existsSync(staticDir) ? staticDir : undefined,
 });

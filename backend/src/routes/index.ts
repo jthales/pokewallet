@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import type { CatalogController } from '../controllers/catalog.controller.js';
 import type { CollectionController } from '../controllers/collection.controller.js';
+import type { PortfolioController } from '../controllers/portfolio.controller.js';
 import type { SalesController } from '../controllers/sales.controller.js';
 
-export function buildRouter(c: { catalog: CatalogController; collection: CollectionController; sales: SalesController }) {
+export function buildRouter(c: { catalog: CatalogController; collection: CollectionController; sales: SalesController; portfolio: PortfolioController }) {
   const router = Router();
 
   router.get('/health', (_req, res) => {
@@ -31,6 +32,15 @@ export function buildRouter(c: { catalog: CatalogController; collection: Collect
   router.get('/sales', c.sales.list);
   router.patch('/sales/:id', c.sales.update);
   router.post('/sales/:id/cancel', c.sales.cancel);
+
+  // Carteira de investimentos
+  router.get('/portfolio', c.portfolio.summary);
+  router.post('/portfolio/refresh', c.portfolio.refresh);
+  router.get('/portfolio/history', c.portfolio.history);
+  router.get('/portfolio/cards', c.portfolio.cardValues);
+  router.get('/portfolio/cards/:id', c.portfolio.card);
+  router.get('/settings', c.portfolio.getSettings);
+  router.put('/settings', c.portfolio.updateSettings);
 
   return router;
 }

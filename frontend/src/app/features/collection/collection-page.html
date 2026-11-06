@@ -72,6 +72,16 @@
         <div class="name">{{ card.name }}</div>
         <div class="meta">{{ card.setName }} · nº {{ card.localNumber }}</div>
         <div class="meta">{{ card.rarity ?? 'Raridade não informada' }}</div>
+        @if (values()[card.id]; as v) {
+          @if (v.valued) {
+            <div class="value" [class.stale]="v.stale">
+              ≈ {{ v.valueCents | brl }}@if (v.unvalued) {<span class="muted"> + {{ v.unvalued }} s/ cotação</span>}
+              @if (v.stale) {<mat-icon class="stale-ic" aria-label="Cotação desatualizada">schedule</mat-icon>}
+            </div>
+          } @else if (card.counts.available) {
+            <div class="meta">Preço indisponível</div>
+          }
+        }
       </a>
     }
   </div>
