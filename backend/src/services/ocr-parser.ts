@@ -38,29 +38,51 @@ function fixDigits(token: string): string {
   return token.replace(/[Oo]/g, '0').replace(/[Il|!]/g, '1').replace(/[Ss](?=\d)/g, '5').replace(/[B](?=\d{2})/g, '8');
 }
 
-/**
- * Encontra padrões de numeração como "136/189", "025/165", "TG01/TG30", "SV049/SV122", "GG35/GG70".
- * Também tenta números sem total (promos como "SWSH123" ou "SM108").
- */
-export function parseCardNumber(text: string): Pick<CardHints, 'localNumber' | 'printedTotal' | 'printedTotalRaw'> {
-  const empty = { localNumber: null, printedTotal: null, printedTotalRaw: null };
-  if (!text) return empty;
-  const compact = text.replace(/[\u2044\u2215\\]/g, '/');
+/** Uma leitura possível da numeração da carta. */
+export interface NumberCandidate {
+  localNumber: string;
+  printedTotal: number | null;
+  printedTotalRaw: string | null;
+  /**
+   * Quão confiável é a leitura: 'exact' (padrão completo com barra), 'repaired' (corrigida, ex.: dígito extra
+   * colado no total) ou 'guess' (dígitos sem barra, só vale se a expansão confirmar).
+   */
+  quality: 'exact' | 'repaired' | 'guess';
+}
 
-  // 1) Numeração puramente numérica (tolerando O/l/I/| no lugar de dígitos): "136/189", "025/165", "l36/l89".
-  const numeric = /(?<![A-Za-z0-9])([0-9OoIl|]{1,4})\s*\/\s*([0-9OoIl|]{1,4})(?![A-Za-z0-9])/g;
+/**
+ * Todas as leituras plausíveis da numeração, da mais para a menos confiável. O OCR costuma:
+ * - perder a barra ("136202" em vez de "136/202");
+ * - colar o símbolo de raridade ou o ® no total ("130/1674" em vez de "130/167");
+ * - trocar dígitos por letras (O/0, l/1, S/5, B/8).
+ * As leituras 'repaired' e 'guess' precisam ser confirmadas pelo catálogo (expansão com aquele total).
+ */
+export function parseNumberCandidates(text: string): NumberCandidate[] {
+  const out: NumberCandidate[] = [];
+  if (!text) return out;
+  const compact = text.replace(/[\u2044\u2215\\]/g, '/');
+  const push = (c: NumberCandidate) => {
+    if (!out.some((o) => o.localNumber === c.localNumber && o.printedTotal === c.printedTotal && o.printedTotalRaw === c.printedTotalRaw)) out.push(c);
+  };
+
+  const numeric = /(?<![A-Za-z0-9])([0-9OoIl|]{1,4})\s*\/\s*([0-9OoIl|]{1,5})/g;
   for (const match of compact.matchAll(numeric)) {
-    const local = fixDigits(match[1]!);
-    const total = fixDigits(match[2]!);
-    if (!/^\d+$/.test(local) || !/^\d+$/.test(total)) continue;
-    // Exige ao menos um dígito real em cada lado para não confundir palavras com números.
     if (!/\d/.test(match[1]!) || !/\d/.test(match[2]!)) continue;
-    const printedTotal = Number(total);
-    if (printedTotal < 1 || printedTotal > 500) continue;
-    return { localNumber: local, printedTotal, printedTotalRaw: total };
+    const local = fixDigits(match[1]!);
+    const totalRaw = fixDigits(match[2]!);
+    if (!/^\d+$/.test(local) || !/^\d+$/.test(totalRaw)) continue;
+    const next = compact[(match.index ?? 0) + match[0].length];
+    const clean = !next || !/[A-Za-z0-9]/.test(next);
+    const total = Number(totalRaw);
+    if (clean && totalRaw.length <= 3 && total >= 1 && total <= 500) push({ localNumber: local, printedTotal: total, printedTotalRaw: totalRaw, quality: 'exact' });
+    // Total com lixo colado no fim: tenta os 3 e os 2 primeiros dígitos.
+    for (const len of [3, 2]) {
+      if (totalRaw.length <= len && clean) continue;
+      const t = totalRaw.slice(0, len);
+      if (t.length === len && Number(t) >= 10) push({ localNumber: local, printedTotal: Number(t), printedTotalRaw: t, quality: 'repaired' });
+    }
   }
 
-  // 2) Numeração com prefixo de letras maiúsculas: "TG01/TG30", "SV049/SV122", "GG35/GG70", "RC5/RC32".
   const prefixed = /(?<![A-Za-z0-9])([A-Z]{1,4}[0-9OoIl]{1,4}[a-z]?)\s*\/\s*([A-Z]{0,4}[0-9OoIl]{1,4})(?![A-Za-z0-9])/g;
   for (const match of compact.matchAll(prefixed)) {
     const split = (raw: string) => {
@@ -70,13 +92,35 @@ export function parseCardNumber(text: string): Pick<CardHints, 'localNumber' | '
     const local = split(match[1]!);
     const total = split(match[2]!);
     if (!/\d/.test(local) || !/\d/.test(total)) continue;
-    return { localNumber: local, printedTotal: /^\d+$/.test(total) ? Number(total) : null, printedTotalRaw: total };
+    push({ localNumber: local, printedTotal: /^\d+$/.test(total) ? Number(total) : null, printedTotalRaw: total, quality: 'exact' });
   }
 
-  // 3) Promos sem total: "SWSH050", "SM108", "SVP 044".
   const promo = compact.match(/\b(SWSH|SM|XY|BW|SVP|SV|DP|HGSS)\s?(\d{1,3})\b/);
-  if (promo) return { ...empty, localNumber: `${promo[1]}${promo[2]}` };
-  return empty;
+  if (promo) push({ localNumber: `${promo[1]}${promo[2]}`, printedTotal: null, printedTotalRaw: null, quality: 'exact' });
+
+  // Barra perdida: "136202" → 136/202, "025165" → 025/165, "4102" → 4/102. Exige 4+ dígitos ("220" é dano, não número).
+  for (const match of compact.matchAll(/(?<![A-Za-z0-9/])(\d{4,6})(?![0-9/])/g)) {
+    const digits = match[1]!;
+    for (let i = 1; i < digits.length; i++) {
+      const local = digits.slice(0, i);
+      const totalRaw = digits.slice(i);
+      if (totalRaw.length < 2 || totalRaw.length > 3 || local.length > 3) continue;
+      const total = Number(totalRaw);
+      if (total < 10 || Number(local) < 1 || Number(local) > total + 150) continue;
+      push({ localNumber: local, printedTotal: total, printedTotalRaw: totalRaw, quality: 'guess' });
+    }
+  }
+  return out;
+}
+
+/**
+ * Leitura principal (mais confiável) da numeração: "136/189", "025/165", "TG01/TG30", promos como "SWSH050".
+ * Leituras reparadas ou adivinhadas ficam de fora; veja `parseNumberCandidates`.
+ */
+export function parseCardNumber(text: string): Pick<CardHints, 'localNumber' | 'printedTotal' | 'printedTotalRaw'> {
+  const best = parseNumberCandidates(text).find((c) => c.quality === 'exact');
+  if (!best) return { localNumber: null, printedTotal: null, printedTotalRaw: null };
+  return { localNumber: best.localNumber, printedTotal: best.printedTotal, printedTotalRaw: best.printedTotalRaw };
 }
 
 function detectLanguage(text: string): 'pt' | 'en' | null {
@@ -119,6 +163,40 @@ export function extractNameCandidates(text: string, max = 3): string[] {
     if (candidates.length >= max) break;
   }
   return candidates;
+}
+
+/** Linha de texto lida, com o peso de onde ela veio (a região do nome vale mais do que o corpo da carta). */
+export interface WeightedLine {
+  text: string;
+  weight: number;
+}
+
+// "©" sozinho não basta: o OCR costuma ler o símbolo de energia ao lado do nome como "©".
+const SKIP_LINE = /evolves\s*from|evolui\s*de|(©|\(c\))\s*\d{4}|illus\.|ilus\.|nintendo|creatures|game\s*freak/i;
+
+/**
+ * Linhas onde o nome da carta pode estar, já limpas de HP/PS e de linhas que certamente não são o nome
+ * ("Evolves from X", copyright, numeração). Peso 1 para a região do nome, 0,85 para o começo do texto
+ * da carta inteira (onde fica o nome) e 0,6 para o resto (nomes de ataques, regras).
+ */
+export function extractNameLines(input: OcrTextInput, maxBodyLines = 30): WeightedLine[] {
+  const lines: WeightedLine[] = [];
+  const add = (raw: string, weight: number) => {
+    if (SKIP_LINE.test(raw) || /\d\s*\/\s*\d/.test(raw)) return;
+    const text = raw
+      .replace(/\b(HP|PS)\s*\d+\b/gi, ' ')
+      .replace(/\d+\s*(HP|PS)\b/gi, ' ')
+      .replace(/[^\p{L}' .\-’&]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text.replace(/[^\p{L}]/gu, '').length >= 3) lines.push({ text, weight });
+  };
+  const split = (t: string | undefined) => (t ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (const line of split(input.nameText)) add(line, 1);
+  split(input.fullText)
+    .slice(0, maxBodyLines)
+    .forEach((line, i) => add(line, i < 3 ? 0.85 : 0.6));
+  return lines;
 }
 
 /** Converte os textos do OCR em pistas estruturadas. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractNameCandidates, parseCardNumber, parseOcrText } from '../src/services/ocr-parser.js';
+import { extractNameCandidates, extractNameLines, parseCardNumber, parseNumberCandidates, parseOcrText } from '../src/services/ocr-parser.js';
 import { normalizeLocalNumber } from '../src/lib/text.js';
 
 describe('parseCardNumber', () => {
@@ -26,6 +26,29 @@ describe('parseCardNumber', () => {
 
   it('não inventa número quando não há padrão', () => {
     expect(parseCardNumber('texto sem numeração')).toEqual({ localNumber: null, printedTotal: null, printedTotalRaw: null });
+  });
+});
+
+describe('parseNumberCandidates', () => {
+  it('recupera a numeração quando o OCR perde a barra (só como palpite)', () => {
+    expect(parseNumberCandidates('W O 136202 6')).toContainEqual({ localNumber: '136', printedTotal: 202, printedTotalRaw: '202', quality: 'guess' });
+  });
+
+  it('corta o lixo colado no total ("130/1674" → 130/167)', () => {
+    expect(parseNumberCandidates('Knocked Out, 130/1674 e')).toContainEqual({ localNumber: '130', printedTotal: 167, printedTotalRaw: '167', quality: 'repaired' });
+  });
+
+  it('não trata dano de ataque de 3 dígitos como numeração', () => {
+    expect(parseNumberCandidates('G-Max Volt Tackle 220')).toEqual([]);
+  });
+});
+
+describe('extractNameLines', () => {
+  it('dá mais peso à região do nome e mantém linhas com © do símbolo de energia', () => {
+    const lines = extractNameLines({ nameText: 'Furret..as © we', fullText: 'Evolves from Sentret\nKeen Eye\n©2008 Pokémon / Nintendo' });
+    expect(lines[0]).toEqual({ text: 'Furret..as we', weight: 1 });
+    expect(lines.map((l) => l.text)).not.toContain('Evolves from Sentret');
+    expect(lines.some((l) => /Nintendo/.test(l.text))).toBe(false);
   });
 });
 

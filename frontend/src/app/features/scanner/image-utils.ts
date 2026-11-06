@@ -25,6 +25,12 @@ export interface RelativeRect {
  * - nome: faixa superior; - número: faixa inferior (o número pode ficar à esquerda ou à direita conforme a era).
  */
 export const NAME_REGION: RelativeRect = { x: 0.04, y: 0.02, w: 0.78, h: 0.1 };
+/**
+ * Faixa do nome mais alta, para quando a carta não ficou exatamente na moldura (sobra de fundo em cima,
+ * carta um pouco menor). Lida junto com a faixa justa: nos testes com cartas reais, as duas juntas acertam
+ * mais do que qualquer uma sozinha.
+ */
+export const NAME_REGION_TALL: RelativeRect = { x: 0.02, y: 0, w: 0.8, h: 0.16 };
 export const NUMBER_REGION: RelativeRect = { x: 0, y: 0.86, w: 1, h: 0.14 };
 
 export const MAX_PROCESSING_SIDE = 1600;

@@ -83,6 +83,11 @@ export interface CardCatalogProvider {
   searchCardsByNumber(localNumber: string, options?: { setId?: string; language?: CatalogLanguage }): Promise<CatalogCardSummary[]>;
   /** Expansões cujo total oficial impresso corresponde ao informado (ex.: 189 em "136/189"). */
   findSetsByOfficialCount(officialCount: number, language?: CatalogLanguage): Promise<CatalogSetSummary[]>;
+  /**
+   * Lista completa e resumida das cartas físicas no idioma pedido (id, nome, número, expansão).
+   * Usada pelo scanner para comparar o texto do OCR com nomes reais sem depender da busca exata da API.
+   */
+  getCardIndex(language?: CatalogLanguage): Promise<CatalogCardSummary[]>;
 }
 
 /** Erro lançado quando o fornecedor externo está indisponível ou responde algo inválido. */

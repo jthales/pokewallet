@@ -15,6 +15,9 @@ export const SETS: CatalogSetSummary[] = [
   { externalId: 'swsh10', name: 'Astral Radiance', logoUrl: null, symbolUrl: null, officialCount: 189, totalCount: 216 },
   { externalId: 'sv03.5', name: '151', logoUrl: null, symbolUrl: null, officialCount: 165, totalCount: 207 },
   { externalId: 'base1', name: 'Base Set', logoUrl: null, symbolUrl: null, officialCount: 102, totalCount: 102 },
+  { externalId: 'sv04', name: 'Paradox Rift', logoUrl: null, symbolUrl: null, officialCount: 182, totalCount: 266 },
+  { externalId: 'sv06', name: 'Twilight Masquerade', logoUrl: null, symbolUrl: null, officialCount: 167, totalCount: 226 },
+  { externalId: 'swsh1', name: 'Sword & Shield', logoUrl: null, symbolUrl: null, officialCount: 202, totalCount: 216 },
 ];
 
 export const CARDS: (CatalogCardSummary & { rarity: string })[] = [
@@ -25,6 +28,10 @@ export const CARDS: (CatalogCardSummary & { rarity: string })[] = [
   { externalId: 'base1-58', name: 'Pikachu', localNumber: '58', setId: 'base1', image: img('base/base1/58'), rarity: 'Common' },
   { externalId: 'swsh4-44', name: 'Pikachu V', localNumber: '44', setId: 'swsh4', image: img('swsh/swsh4/44'), rarity: 'Rare Holo V' },
   { externalId: 'sm1-136', name: 'Double Colorless Energy', localNumber: '136', setId: 'sm1', image: null, rarity: 'Uncommon' },
+  { externalId: 'swsh3-126', name: 'Galarian Obstagoon', localNumber: '126', setId: 'swsh3', image: img('swsh/swsh3/126'), rarity: 'Rare' },
+  { externalId: 'sv04-123', name: 'Brute Bonnet', localNumber: '123', setId: 'sv04', image: img('sv/sv04/123'), rarity: 'Rare' },
+  { externalId: 'sv06-130', name: 'Dragapult ex', localNumber: '130', setId: 'sv06', image: img('sv/sv06/130'), rarity: 'Double Rare' },
+  { externalId: 'swsh1-136', name: 'Cufant', localNumber: '136', setId: 'swsh1', image: img('swsh/swsh1/136'), rarity: 'Common' },
 ];
 
 /** Fornecedor de catálogo em memória, com contadores e modo "fora do ar". */
@@ -81,6 +88,11 @@ export class FakeCatalog implements CardCatalogProvider {
     this.guard();
     const s = SETS.find((x) => x.externalId === id);
     return s ? { ...s, serieId: null, serieName: null, releaseDate: null, cards: [], language: 'en' as const } : null;
+  }
+
+  async getCardIndex() {
+    this.guard();
+    return CARDS.map(({ rarity: _r, ...rest }) => rest);
   }
 
   async findSetsByOfficialCount(n: number) {
