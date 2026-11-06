@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type Tesseract from 'tesseract.js';
-import { NAME_REGION, NUMBER_REGION, cropRegion, enhancedCopy, loadBitmap, resizeForProcessing } from './image-utils';
+import { NAME_REGION, NAME_REGION_TALL, NUMBER_REGION, cropRegion, enhancedCopy, loadBitmap, resizeForProcessing } from './image-utils';
 
 export interface OcrOutput {
   fullText: string;
@@ -74,7 +74,9 @@ export class OcrService {
       if (cropRegions) {
         this.progress.set({ stage: 'name', label: 'Lendo o nome…', value: 0.33 });
         await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK as Tesseract.PSM });
-        nameText = (await worker.recognize(cropRegion(base, NAME_REGION, 2))).data.text;
+        const tight = (await worker.recognize(cropRegion(base, NAME_REGION, 2))).data.text;
+        const tall = (await worker.recognize(cropRegion(base, NAME_REGION_TALL, 2))).data.text;
+        nameText = `${tight}\n${tall}`;
 
         this.progress.set({ stage: 'number', label: 'Lendo o número…', value: 0.66 });
         await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT as Tesseract.PSM });

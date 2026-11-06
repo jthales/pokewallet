@@ -62,4 +62,37 @@ describe('IdentificationService', () => {
     expect(result.candidates).toEqual([]);
     expect(result.message).toBeTruthy();
   });
+
+  it('tolera erros de leitura no nome (o filtro da API só acha o nome exato)', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ nameText: 'STAGE1 Furet el', numberText: '136/189' });
+    expect(result.candidates[0]).toMatchObject({ externalId: 'swsh3-136', confidence: 'high' });
+    expect(result.hints.nameCandidates[0]).toBe('Furret');
+  });
+
+  it('junta palavras coladas e sufixos lidos errado ("BrutelBonnet", "Dragapult&X")', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    expect((await service.identify({ nameText: 'acc BrutelBonnet' })).candidates[0]?.externalId).toBe('sv04-123');
+    expect((await service.identify({ nameText: 'Je Dragapult&X [32' })).candidates[0]?.externalId).toBe('sv06-130');
+  });
+
+  it('nome + expansão vencem quando o OCR erra um dígito do número (126/189 em vez de 136/189)', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ nameText: 'Furret', numberText: '126/189' });
+    expect(result.candidates[0]).toMatchObject({ externalId: 'swsh3-136', confidence: 'medium' });
+    expect(result.candidates[0]!.score).toBeGreaterThan(result.candidates.find((c) => c.externalId === 'swsh3-126')!.score);
+  });
+
+  it('confirma numeração sem barra pelo catálogo ("136202" → Cufant 136/202)', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ nameText: 'Cufant', numberText: 'W O 136202 6' });
+    expect(result.candidates[0]?.externalId).toBe('swsh1-136');
+    expect(result.hints).toMatchObject({ localNumber: '136', printedTotal: 202 });
+  });
+
+  it('corrige total com lixo colado ("130/1674")', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ numberText: 'Knocked Out, 130/1674 e' });
+    expect(result.candidates[0]?.externalId).toBe('sv06-130');
+  });
 });

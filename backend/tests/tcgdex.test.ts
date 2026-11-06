@@ -100,4 +100,18 @@ describe('tcgdex assets', () => {
     expect(buildCardImage(undefined)).toBeNull();
     expect(buildSetAssetUrl('https://assets.tcgdex.net/en/swsh/swsh3/logo')).toBe('https://assets.tcgdex.net/en/swsh/swsh3/logo.webp');
   });
+
+  it('carrega o índice completo de cartas uma vez, sem cartas digitais (Pocket)', async () => {
+    const list = [
+      { id: 'swsh3-136', localId: '136', name: 'Furret', image: 'https://assets.tcgdex.net/en/swsh/swsh3/136' },
+      { id: 'A1-001', localId: '001', name: 'Bulbasaur', image: 'https://assets.tcgdex.net/en/tcgp/A1/001' },
+    ];
+    const fetchFn = fakeFetch({ '/en/cards': { status: 200, body: list } });
+    const service = new TcgdexCatalogService({ fetchFn });
+    const [a, b] = await Promise.all([service.getCardIndex('en'), service.getCardIndex('en')]);
+    expect(a).toBe(b);
+    expect(a.map((c) => c.externalId)).toEqual(['swsh3-136']);
+    expect(a[0]).toMatchObject({ setId: 'swsh3', localNumber: '136' });
+    expect(fetchFn.mock.calls.filter(([url]) => url.endsWith('/en/cards'))).toHaveLength(1);
+  });
 });

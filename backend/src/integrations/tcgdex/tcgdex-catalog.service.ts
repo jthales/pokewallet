@@ -49,6 +49,8 @@ export class TcgdexCatalogService implements CardCatalogProvider {
   private readonly timeoutMs: number;
   private readonly fetchFn: FetchLike;
   private readonly cache: TtlCache<unknown>;
+  /** Índice completo por idioma; guarda a promessa para que requisições simultâneas façam um único download. */
+  private readonly indexCache = new TtlCache<Promise<CatalogCardSummary[]>>(12 * 60 * 60 * 1000, 4);
 
   constructor(options: TcgdexOptions = {}) {
     this.baseUrl = (options.baseUrl ?? 'https://api.tcgdex.net/v2').replace(/\/+$/, '');
@@ -139,6 +141,20 @@ export class TcgdexCatalogService implements CardCatalogProvider {
   async findSetsByOfficialCount(officialCount: number, language: CatalogLanguage = 'en'): Promise<CatalogSetSummary[]> {
     const sets = await this.getSets(language);
     return sets.filter((s) => s.officialCount === officialCount);
+  }
+
+  async getCardIndex(language: CatalogLanguage = 'en'): Promise<CatalogCardSummary[]> {
+    const cached = this.indexCache.get(language);
+    if (cached) return cached;
+    const loading = (async () => {
+      // ~24 mil cartas (~2,4 MB em inglês); a TCGdex devolve tudo quando a listagem não tem filtros nem paginação.
+      const cards = await this.request(`/${language}/cards`, TcgdexCardBriefListSchema);
+      const digital = await this.getDigitalOnlySetIds();
+      return (cards ?? []).map((c) => this.toSummary(c)).filter((c) => !c.setId || !digital.has(c.setId));
+    })();
+    this.indexCache.set(language, loading);
+    loading.catch(() => this.indexCache.delete(language));
+    return loading;
   }
 
   private async getDigitalOnlySetIds(): Promise<Set<string>> {
