@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CatalogUnavailableError } from '../src/integrations/catalog-provider.js';
 import { IdentificationService } from '../src/services/identification.service.js';
+import { digitsStream, numberEvidence } from '../src/services/number-evidence.js';
 import { FakeCatalog } from './fakes.js';
 
 describe('IdentificationService', () => {
@@ -79,7 +80,7 @@ describe('IdentificationService', () => {
   it('nome + expansão vencem quando o OCR erra um dígito do número (126/189 em vez de 136/189)', async () => {
     const service = new IdentificationService(new FakeCatalog());
     const result = await service.identify({ nameText: 'Furret', numberText: '126/189' });
-    expect(result.candidates[0]).toMatchObject({ externalId: 'swsh3-136', confidence: 'medium' });
+    expect(result.candidates[0]).toMatchObject({ externalId: 'swsh3-136', confidence: 'high', reasons: expect.arrayContaining(['nome', 'número']) });
     expect(result.candidates[0]!.score).toBeGreaterThan(result.candidates.find((c) => c.externalId === 'swsh3-126')!.score);
   });
 
@@ -94,5 +95,27 @@ describe('IdentificationService', () => {
     const service = new IdentificationService(new FakeCatalog());
     const result = await service.identify({ numberText: 'Knocked Out, 130/1674 e' });
     expect(result.candidates[0]?.externalId).toBe('sv06-130');
+  });
+
+  it('confere o número de cada candidato no rodapé mesmo com lixo do OCR ("0136/1896" → 136/189)', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ nameText: 'Furret', numberText: 'w x 2 /0136/1896 2' });
+    expect(result.candidates[0]).toMatchObject({ externalId: 'swsh3-136', confidence: 'high' });
+    expect(result.candidates.find((c) => c.externalId === 'hgss1-21')?.confidence).not.toBe('high');
+  });
+
+  it('não dá confiança alta quando duas impressões empatam', async () => {
+    const service = new IdentificationService(new FakeCatalog());
+    const result = await service.identify({ nameText: 'Furret' });
+    expect(result.candidates.slice(0, 2).map((c) => c.name)).toEqual(['Furret', 'Furret']);
+    expect(result.candidates.every((c) => c.confidence !== 'high' && c.confidence !== 'medium')).toBe(true);
+  });
+});
+
+describe('numberEvidence', () => {
+  it('pontua o número exato, com um erro e ausente', () => {
+    expect(numberEvidence('136', 189, digitsStream('Mus. koizumi 136/189 ©2020'))).toBe(1);
+    expect(numberEvidence('025', 165, digitsStream('023/165'))).toBe(0.8);
+    expect(numberEvidence('21', 123, digitsStream('136/189'))).toBe(0);
   });
 });

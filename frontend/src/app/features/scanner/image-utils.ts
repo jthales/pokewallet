@@ -32,6 +32,14 @@ export const NAME_REGION: RelativeRect = { x: 0.04, y: 0.02, w: 0.78, h: 0.1 };
  */
 export const NAME_REGION_TALL: RelativeRect = { x: 0.02, y: 0, w: 0.8, h: 0.16 };
 export const NUMBER_REGION: RelativeRect = { x: 0, y: 0.86, w: 1, h: 0.14 };
+/**
+ * Cantos inferiores, lidos separados e só com dígitos e "/": a numeração fica embaixo à esquerda nas cartas
+ * recentes (SM, SWSH, SV) e embaixo à direita nas antigas (Base até XY).
+ */
+export const NUMBER_CORNERS: RelativeRect[] = [
+  { x: 0, y: 0.87, w: 0.55, h: 0.11 },
+  { x: 0.5, y: 0.87, w: 0.5, h: 0.11 },
+];
 
 export const MAX_PROCESSING_SIDE = 1600;
 
