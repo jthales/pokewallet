@@ -1,0 +1,117 @@
+<h1 class="page-title">Adicionar carta</h1>
+
+<mat-tab-group [selectedIndex]="tab()" (selectedIndexChange)="tab.set($event)" mat-stretch-tabs animationDuration="150ms">
+  <mat-tab label="Escanear">
+    <div class="tab-body">
+      @switch (store.step()) {
+        @case ('capture') {
+          <app-camera-capture (captured)="onCaptured($event)" />
+          <div class="or"><span>ou</span></div>
+          <label class="upload" tabindex="0" (keydown.enter)="fileInput.click()" (keydown.space)="fileInput.click()">
+            <mat-icon aria-hidden="true">upload</mat-icon>
+            <span>Enviar uma foto da carta</span>
+            <small class="muted">JPG, PNG ou WebP · até 10 MB</small>
+            <input #fileInput type="file" [accept]="accept" (change)="onFile($event)" />
+          </label>
+          @if (store.error()) {
+            <p class="error" role="alert">{{ store.error() }}</p>
+          }
+        }
+
+        @case ('preview') {
+          <div class="preview">
+            <img [src]="store.previewUrl()" alt="Foto da carta enviada" />
+            <div class="side">
+              <mat-slide-toggle [checked]="store.cropRegions()" (change)="store.cropRegions.set($event.checked)">
+                Ler nome e número separadamente
+              </mat-slide-toggle>
+              <p class="muted small">Ideal quando a carta ocupa a foto inteira. Desligue se a carta estiver pequena na imagem.</p>
+              @if (store.error()) {
+                <p class="error" role="alert">{{ store.error() }}</p>
+                <button mat-stroked-button (click)="goManual()"><mat-icon>search</mat-icon>Buscar manualmente</button>
+              }
+              <div class="actions">
+                <button mat-button (click)="store.reset()"><mat-icon>replay</mat-icon>Outra foto</button>
+                <button mat-flat-button (click)="store.identify()"><mat-icon>auto_awesome</mat-icon>Identificar carta</button>
+              </div>
+            </div>
+          </div>
+        }
+
+        @case ('processing') {
+          <div class="processing" role="status" aria-live="polite">
+            <img [src]="store.previewUrl()" alt="" class="dim" />
+            <div class="overlay">
+              <div class="pokeball" aria-hidden="true"></div>
+              <strong>{{ store.progress()?.label ?? 'Processando a imagem…' }}</strong>
+              <mat-progress-bar [mode]="store.progress()?.value !== null && store.progress()?.value !== undefined ? 'determinate' : 'indeterminate'" [value]="(store.progress()?.value ?? 0) * 100" />
+              <small>O reconhecimento acontece no seu aparelho; a foto não é enviada.</small>
+            </div>
+          </div>
+        }
+
+        @case ('results') {
+          <div class="results-head">
+            <img [src]="store.previewUrl()" alt="Sua foto" class="mini" />
+            <div>
+              <h2>Possíveis correspondências</h2>
+              @if (hints(); as h) {
+                <p class="muted small">
+                  Lido:
+                  @if (h.nameCandidates.length) { <strong>{{ h.nameCandidates[0] }}</strong> }
+                  @if (h.localNumber) { · nº <strong>{{ h.localNumber }}</strong>@if (h.printedTotalRaw) {/{{ h.printedTotalRaw }}} }
+                  @if (!h.nameCandidates.length && !h.localNumber) { nada legível }
+                </p>
+              }
+            </div>
+          </div>
+
+          @if (!store.candidates().length) {
+            <app-empty-state icon="help_outline" title="Não encontramos a carta" [message]="store.result()?.message ?? 'Tente outra foto ou use a busca manual.'">
+              <div class="actions">
+                <button mat-button (click)="store.reset()">Outra foto</button>
+                <button mat-flat-button (click)="goManual()">Buscar manualmente</button>
+              </div>
+            </app-empty-state>
+          } @else {
+            <p class="muted small">Confira a imagem e toque em <strong>Confirmar</strong> na carta correta. Nada é cadastrado sem a sua confirmação.</p>
+            <ul class="candidates">
+              @for (c of store.candidates(); track c.externalId; let first = $first) {
+                <li class="cand panel" [class.best]="first && c.confidence === 'high'">
+                  <app-card-image class="cimg" [src]="c.image?.small" [alt]="c.name" />
+                  <div class="cinfo">
+                    <strong>{{ c.name }}</strong>
+                    <span class="muted">{{ c.setName ?? c.setId ?? 'Expansão desconhecida' }}</span>
+                    <span class="muted">nº {{ c.localNumber }} · {{ c.rarity ?? 'raridade não informada' }}</span>
+                    @if (c.confidence) {
+                      <span class="chip" [class]="c.confidence" [title]="'Coincide: ' + (c.reasons.join(', ') || '—')">{{ confidenceLabel[c.confidence] }}</span>
+                    }
+                    <button mat-flat-button (click)="confirm(c)"><mat-icon>check</mat-icon>Confirmar</button>
+                  </div>
+                </li>
+              }
+            </ul>
+            <div class="actions center">
+              @if (store.result()?.hasMore) {
+                <button mat-stroked-button (click)="store.loadMore()" [disabled]="store.loadingMore()">
+                  {{ store.loadingMore() ? 'Buscando…' : 'Mostrar mais resultados' }}
+                </button>
+              }
+              <button mat-button (click)="goManual()"><mat-icon>search</mat-icon>Não é nenhuma destas</button>
+              <button mat-button (click)="store.reset()"><mat-icon>photo_camera</mat-icon>Escanear outra</button>
+            </div>
+          }
+          @if (store.error()) {
+            <p class="error" role="alert">{{ store.error() }}</p>
+          }
+        }
+      }
+    </div>
+  </mat-tab>
+
+  <mat-tab label="Busca manual">
+    <div class="tab-body">
+      <app-manual-search />
+    </div>
+  </mat-tab>
+</mat-tab-group>

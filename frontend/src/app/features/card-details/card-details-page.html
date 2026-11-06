@@ -1,0 +1,108 @@
+<a mat-button routerLink="/colecao" class="back"><mat-icon>arrow_back</mat-icon>Coleção</a>
+
+@if (error()) {
+  <app-empty-state icon="error_outline" title="Não foi possível abrir esta carta" [message]="error()!">
+    <a mat-stroked-button routerLink="/colecao">Voltar à coleção</a>
+  </app-empty-state>
+} @else if (loading() && !card()) {
+  <div class="layout">
+    <app-card-image class="hero-img" />
+    <div class="info"><div class="sk w60"></div><div class="sk w40"></div><div class="sk w80"></div></div>
+  </div>
+} @else if (card(); as c) {
+  <div class="layout">
+    <app-card-image class="hero-img" [src]="c.imageLargeUrl ?? c.imageUrl" [alt]="c.name" eager />
+    <div class="info">
+      <h1>{{ c.name }}</h1>
+      <dl class="facts">
+        <div><dt>Expansão</dt><dd>{{ c.setName }}</dd></div>
+        <div><dt>Número</dt><dd>{{ c.localNumber }}@if (c.metadata?.setOfficialCount) {/{{ c.metadata?.setOfficialCount }}}</dd></div>
+        <div><dt>Raridade</dt><dd>{{ c.rarity ?? 'Não informada' }}</dd></div>
+        @if (c.metadata?.illustrator) {
+          <div><dt>Ilustrador</dt><dd>{{ c.metadata?.illustrator }}</dd></div>
+        }
+        <div><dt>Disponíveis</dt><dd>{{ c.counts.available }} de {{ c.counts.total }}</dd></div>
+      </dl>
+      <p class="muted src">Dados do catálogo: {{ c.provider === 'tcgdex' ? 'TCGdex' : c.provider }} ({{ c.externalId }})</p>
+      <button mat-flat-button (click)="addItems()"><mat-icon>add</mat-icon>Adicionar exemplares</button>
+    </div>
+  </div>
+
+  <section class="items">
+    <h2>Exemplares disponíveis ({{ available().length }})</h2>
+    @if (!available().length) {
+      <p class="muted">Nenhum exemplar disponível no momento.</p>
+    }
+    <ul>
+      @for (item of available(); track item.id; let i = $index) {
+        <li class="item panel">
+          <div class="item-main">
+            <div class="badges">
+              <span class="chip ok">Disponível</span>
+              <span class="chip">{{ item.condition | condition }}</span>
+              <span class="chip">{{ item.variant | variant }}</span>
+              <span class="chip">{{ item.language | lang }}</span>
+            </div>
+            <div class="details">
+              @if (item.acquiredAt) {
+                <span>Adquirida em {{ item.acquiredAt | date: 'dd/MM/yyyy' : 'UTC' }}</span>
+              }
+              @if (item.purchasePriceCents !== null) {
+                <span>Pago: {{ item.purchasePriceCents | brl }}</span>
+              }
+            </div>
+            @if (item.notes) {
+              <p class="notes">{{ item.notes }}</p>
+            }
+          </div>
+          <div class="actions">
+            <button mat-stroked-button (click)="sell(item)"><mat-icon>sell</mat-icon>Vender</button>
+            <button mat-icon-button [matMenuTriggerFor]="menu" [attr.aria-label]="'Mais ações do exemplar ' + (i + 1)"><mat-icon>more_vert</mat-icon></button>
+            <mat-menu #menu="matMenu">
+              <button mat-menu-item (click)="edit(item)"><mat-icon>edit</mat-icon>Editar</button>
+              <button mat-menu-item (click)="remove(item)"><mat-icon>delete</mat-icon>Excluir</button>
+            </mat-menu>
+          </div>
+        </li>
+      }
+    </ul>
+
+    @if (sold().length) {
+      <h2>Vendidos ({{ sold().length }})</h2>
+      <ul>
+        @for (item of sold(); track item.id; let i = $index) {
+          <li class="item panel sold">
+            <div class="item-main">
+              <div class="badges">
+                <span class="chip sold">Vendido</span>
+                <span class="chip">{{ item.condition | condition }}</span>
+                <span class="chip">{{ item.variant | variant }}</span>
+                <span class="chip">{{ item.language | lang }}</span>
+              </div>
+              @if (item.activeSale; as s) {
+                <div class="details">
+                  <span>Vendido em {{ s.soldAt | date: 'dd/MM/yyyy' : 'UTC' }} por <strong>{{ s.salePriceCents | brl }}</strong></span>
+                  @if (item.purchasePriceCents !== null) {
+                    <span>Pago: {{ item.purchasePriceCents | brl }}</span>
+                  }
+                </div>
+                @if (s.notes) {
+                  <p class="notes">{{ s.notes }}</p>
+                }
+              }
+            </div>
+            <div class="actions">
+              <button mat-icon-button [matMenuTriggerFor]="soldMenu" [attr.aria-label]="'Ações do exemplar vendido ' + (i + 1)"><mat-icon>more_vert</mat-icon></button>
+              <mat-menu #soldMenu="matMenu">
+                <button mat-menu-item (click)="editSale(item)"><mat-icon>edit_note</mat-icon>Corrigir venda</button>
+                <button mat-menu-item (click)="undoSale(item)"><mat-icon>undo</mat-icon>Desfazer venda</button>
+                <button mat-menu-item (click)="edit(item)"><mat-icon>edit</mat-icon>Editar exemplar</button>
+                <button mat-menu-item (click)="remove(item)"><mat-icon>delete</mat-icon>Excluir</button>
+              </mat-menu>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+}

@@ -1,0 +1,19 @@
+{
+  "name": "pokewallet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PokéWallet — gerenciamento de coleção de cartas Pokémon TCG com reconhecimento por OCR",
+  "engines": { "node": ">=20.19" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n api,web -c red,yellow \"npm run dev --prefix backend\" \"npm start --prefix frontend\"",
+    "dev:mobile": "concurrently -k -n api,web -c red,yellow \"npm run dev --prefix backend\" \"npm run start:mobile --prefix frontend\"",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "start": "npm run db:deploy --prefix backend && npm start --prefix backend",
+    "test": "npm test --prefix backend && npm test --prefix frontend",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -1,0 +1,78 @@
+<div class="head">
+  <h1 class="page-title">Minha coleção</h1>
+  <a mat-stroked-button routerLink="/scanner"><mat-icon>add</mat-icon>Adicionar</a>
+</div>
+
+<section class="filters panel" aria-label="Filtros">
+  <mat-form-field class="search">
+    <mat-label>Buscar pelo nome</mat-label>
+    <mat-icon matPrefix aria-hidden="true">search</mat-icon>
+    <input matInput type="search" [ngModel]="search()" (ngModelChange)="search.set($event)" autocomplete="off" />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Expansão</mat-label>
+    <mat-select [ngModel]="setId()" (ngModelChange)="setId.set($event)">
+      <mat-option value="">Todas</mat-option>
+      @for (s of filters().sets; track s.id) {
+        <mat-option [value]="s.id">{{ s.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Raridade</mat-label>
+    <mat-select [ngModel]="rarity()" (ngModelChange)="rarity.set($event)">
+      <mat-option value="">Todas</mat-option>
+      @for (r of filters().rarities; track r) {
+        <mat-option [value]="r">{{ r }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Status</mat-label>
+    <mat-select [ngModel]="status()" (ngModelChange)="status.set($event)">
+      <mat-option value="">Todos</mat-option>
+      <mat-option value="AVAILABLE">Com exemplares disponíveis</mat-option>
+      <mat-option value="SOLD">Com exemplares vendidos</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Ordenar por</mat-label>
+    <mat-select [ngModel]="sort()" (ngModelChange)="sort.set($event)">
+      <mat-option value="createdAt-desc">Mais recentes</mat-option>
+      <mat-option value="createdAt-asc">Mais antigas</mat-option>
+      <mat-option value="name-asc">Nome (A–Z)</mat-option>
+      <mat-option value="name-desc">Nome (Z–A)</mat-option>
+    </mat-select>
+  </mat-form-field>
+</section>
+
+@if (error()) {
+  <div class="panel error" role="alert">{{ error() }}</div>
+} @else if (loading() && !cards().length) {
+  <app-skeleton-grid />
+} @else if (!cards().length) {
+  @if (hasFilters()) {
+    <app-empty-state icon="filter_alt_off" title="Nenhuma carta com esses filtros" message="Tente outros termos ou limpe os filtros.">
+      <button mat-stroked-button (click)="clear()">Limpar filtros</button>
+    </app-empty-state>
+  } @else {
+    <app-empty-state icon="catching_pokemon" title="Nenhuma carta por aqui ainda" message="Escaneie uma carta ou busque pelo nome para começar sua coleção.">
+      <a mat-flat-button routerLink="/scanner">Adicionar carta</a>
+    </app-empty-state>
+  }
+} @else {
+  <p class="muted count" aria-live="polite">{{ cards().length }} {{ cards().length === 1 ? 'carta' : 'cartas' }}</p>
+  <div class="card-grid" [class.dim]="loading()">
+    @for (card of cards(); track card.id) {
+      <a class="tile" [routerLink]="['/colecao', card.id]" [attr.aria-label]="card.name + ', ' + card.setName + ', ' + card.counts.available + ' disponíveis'">
+        <div class="img-wrap">
+          <app-card-image [src]="card.imageUrl" [alt]="card.name" />
+          <span class="qty" [class.none]="!card.counts.available" title="Exemplares disponíveis">×{{ card.counts.available }}</span>
+        </div>
+        <div class="name">{{ card.name }}</div>
+        <div class="meta">{{ card.setName }} · nº {{ card.localNumber }}</div>
+        <div class="meta">{{ card.rarity ?? 'Raridade não informada' }}</div>
+      </a>
+    }
+  </div>
+}

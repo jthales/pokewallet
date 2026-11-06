@@ -1,0 +1,64 @@
+<h1 class="page-title">Histórico de vendas</h1>
+
+<section class="summary">
+  <div class="panel stat">
+    <span class="label">Vendas</span>
+    <span class="value">{{ history()?.totals?.count ?? '—' }}</span>
+  </div>
+  <div class="panel stat">
+    <span class="label">Total recebido</span>
+    <span class="value">{{ history() ? (history()!.totals.revenueCents | brl) : '—' }}</span>
+  </div>
+</section>
+
+<mat-slide-toggle [checked]="includeCancelled()" (change)="includeCancelled.set($event.checked)">Mostrar vendas desfeitas</mat-slide-toggle>
+
+@if (error()) {
+  <div class="panel error" role="alert">{{ error() }} <button mat-button (click)="load()">Tentar novamente</button></div>
+} @else if (loading() && !history()) {
+  <ul class="list" aria-busy="true">
+    @for (i of [1, 2, 3]; track i) {
+      <li class="panel row sk-row"><div class="sk thumb"></div><div class="grow"><div class="sk l1"></div><div class="sk l2"></div></div></li>
+    }
+  </ul>
+} @else if (!history()?.sales?.length) {
+  <app-empty-state icon="sell" title="Nenhuma venda registrada" message="Quando vender um exemplar, registre a venda na página da carta.">
+    <a mat-stroked-button routerLink="/colecao">Ir para a coleção</a>
+  </app-empty-state>
+} @else {
+  <ul class="list">
+    @for (s of history()!.sales; track s.id) {
+      <li class="panel row" [class.cancelled]="s.cancelledAt">
+        <a [routerLink]="['/colecao', s.card.id]" class="thumb-link" [attr.aria-label]="'Abrir ' + s.card.name">
+          <app-card-image class="thumb" [src]="s.card.imageUrl" [alt]="s.card.name" />
+        </a>
+        <div class="grow">
+          <div class="title">
+            <a [routerLink]="['/colecao', s.card.id]">{{ s.card.name }}</a>
+            @if (s.cancelledAt) {
+              <span class="chip">Desfeita</span>
+            }
+          </div>
+          <div class="muted meta">{{ s.card.setName }} · nº {{ s.card.localNumber }} · {{ s.item.condition | condition }} · {{ s.item.variant | variant }}</div>
+          <div class="meta">
+            {{ s.soldAt | date: 'dd/MM/yyyy' : 'UTC' }}
+            @if (s.item.purchasePriceCents !== null) {
+              <span class="muted"> · pago {{ s.item.purchasePriceCents | brl }}</span>
+            }
+          </div>
+          @if (s.notes) {
+            <div class="muted meta notes">{{ s.notes }}</div>
+          }
+        </div>
+        <div class="price">{{ s.salePriceCents | brl }}</div>
+        @if (!s.cancelledAt) {
+          <button mat-icon-button [matMenuTriggerFor]="menu" [attr.aria-label]="'Ações da venda de ' + s.card.name"><mat-icon>more_vert</mat-icon></button>
+          <mat-menu #menu="matMenu">
+            <button mat-menu-item (click)="edit(s)"><mat-icon>edit_note</mat-icon>Corrigir venda</button>
+            <button mat-menu-item (click)="undo(s)"><mat-icon>undo</mat-icon>Desfazer venda</button>
+          </mat-menu>
+        }
+      </li>
+    }
+  </ul>
+}

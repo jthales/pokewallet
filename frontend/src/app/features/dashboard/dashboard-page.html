@@ -1,0 +1,58 @@
+<section class="hero">
+  <div>
+    <h1>Sua coleção Pokémon, organizada.</h1>
+    <p>Fotografe uma carta, confirme a identificação e pronto: ela entra na sua carteira.</p>
+  </div>
+  <a mat-flat-button routerLink="/scanner" class="scan-btn">
+    <mat-icon>photo_camera</mat-icon>
+    Escanear carta
+  </a>
+</section>
+
+@if (error()) {
+  <div class="panel error" role="alert">
+    <mat-icon aria-hidden="true">cloud_off</mat-icon>
+    <span>{{ error() }}</span>
+    <button mat-button (click)="load()">Tentar novamente</button>
+  </div>
+}
+
+<section class="stats" aria-label="Resumo da coleção">
+  @for (s of stats(); track s.label) {
+    <div class="stat panel">
+      <mat-icon aria-hidden="true">{{ s.icon }}</mat-icon>
+      @if (loading()) {
+        <span class="value sk"></span>
+      } @else {
+        <span class="value">{{ s.value ?? '—' }}</span>
+      }
+      <span class="label">{{ s.label }}</span>
+    </div>
+  }
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Últimas cartas adicionadas</h2>
+    @if (data()?.recentCards?.length) {
+      <a mat-button routerLink="/colecao">Ver coleção</a>
+    }
+  </div>
+  @if (loading()) {
+    <app-skeleton-grid [count]="4" />
+  } @else if (data() && !data()!.recentCards.length) {
+    <app-empty-state icon="catching_pokemon" title="Sua coleção está vazia" message="Escaneie sua primeira carta ou encontre-a pela busca manual.">
+      <a mat-flat-button routerLink="/scanner">Adicionar primeira carta</a>
+    </app-empty-state>
+  } @else {
+    <div class="card-grid">
+      @for (card of data()?.recentCards; track card.id) {
+        <a class="tile" [routerLink]="['/colecao', card.id]">
+          <app-card-image [src]="card.imageUrl" [alt]="card.name" />
+          <div class="name">{{ card.name }}</div>
+          <div class="meta">{{ card.setName }} · {{ card.localNumber }}</div>
+        </a>
+      }
+    </div>
+  }
+</section>

@@ -1,0 +1,72 @@
+// PokéWallet — modelo de dados local (SQLite).
+// Valores monetários são armazenados em centavos (Int) para evitar erros de ponto flutuante.
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/// Cópia local dos metadados de uma carta de um fornecedor de catálogo (ex.: TCGdex).
+/// O par (provider, externalId) identifica a carta no fornecedor; o `id` é interno,
+/// de modo que a coleção não fica acoplada a um fornecedor específico.
+model CardCatalog {
+  id          String           @id @default(cuid())
+  externalId  String
+  provider    String
+  name        String
+  localNumber String
+  setId       String
+  setName     String
+  rarity      String?
+  imageUrl    String?
+  metadata    Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  items       CollectionItem[]
+
+  @@unique([provider, externalId])
+  @@index([name])
+  @@index([setId])
+}
+
+/// Um exemplar físico de uma carta.
+model CollectionItem {
+  id                 String      @id @default(cuid())
+  cardCatalogId      String
+  cardCatalog        CardCatalog @relation(fields: [cardCatalogId], references: [id], onDelete: Restrict)
+  condition          String // MINT | NEAR_MINT | LIGHTLY_PLAYED | MODERATELY_PLAYED | HEAVILY_PLAYED | DAMAGED
+  variant            String // NORMAL | HOLOFOIL | REVERSE_HOLOFOIL | FIRST_EDITION | OTHER
+  language           String // idioma físico do exemplar (ex.: pt, en, ja) — independente do idioma de consulta
+  acquiredAt         DateTime?
+  purchasePriceCents Int?
+  currency           String      @default("BRL")
+  notes              String?
+  status             String      @default("AVAILABLE") // AVAILABLE | SOLD
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  sales              Sale[]
+
+  @@index([cardCatalogId])
+  @@index([status])
+}
+
+/// Registro de venda. Desfazer uma venda marca `cancelledAt` em vez de apagar o histórico.
+model Sale {
+  id               String         @id @default(cuid())
+  collectionItemId String
+  collectionItem   CollectionItem @relation(fields: [collectionItemId], references: [id], onDelete: Cascade)
+  soldAt           DateTime
+  salePriceCents   Int
+  currency         String         @default("BRL")
+  notes            String?
+  cancelledAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([collectionItemId])
+  @@index([soldAt])
+}
