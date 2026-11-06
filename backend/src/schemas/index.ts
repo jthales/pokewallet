@@ -24,8 +24,8 @@ export const LangQuerySchema = z.object({ lang: Lang });
 export const IdentifySchema = z
   .object({
     fullText: z.string().max(10_000).optional(),
-    nameText: z.string().max(2_000).optional(),
-    numberText: z.string().max(2_000).optional(),
+    nameText: z.string().max(4_000).optional(),
+    numberText: z.string().max(4_000).optional(),
     language: z.enum(['en', 'pt']).optional(),
     offset: z.number().int().min(0).max(200).default(0),
     limit: z.number().int().min(1).max(20).default(5),

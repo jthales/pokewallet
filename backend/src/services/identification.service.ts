@@ -6,6 +6,7 @@ import {
 } from '../integrations/catalog-provider.js';
 import { normalizeLocalNumber, normalizeText } from '../lib/text.js';
 import { buildNameIndex, matchCardNames, type NameIndex, type NameMatch } from './card-name-matcher.js';
+import { digitsStream, numberEvidence } from './number-evidence.js';
 import { extractNameLines, parseNumberCandidates, parseOcrText, type CardHints, type NumberCandidate, type OcrTextInput } from './ocr-parser.js';
 
 export type Confidence = 'high' | 'medium' | 'low';
@@ -104,13 +105,14 @@ export class IdentificationService {
     }
     const exactNumbers = numberCandidates.filter((c) => c.quality === 'exact');
     const primaryNumber = confirmed.find((c) => c.candidate.quality !== 'guess')?.candidate ?? exactNumbers[0] ?? confirmed[0]?.candidate ?? null;
-    const readNumbers = new Set(
-      [...confirmed.filter((c) => c.candidate.quality !== 'guess').map((c) => c.candidate.localNumber), ...exactNumbers.map((c) => c.localNumber)].map((n) =>
-        normalizeLocalNumber(n),
-      ),
-    );
-    // Leituras sem barra confirmadas pelo catálogo: valem como pista fraca para aquela carta específica.
-    const guessedCards = new Set(confirmed.filter((c) => c.candidate.quality === 'guess').map((c) => c.card.externalId));
+    // Cartas cuja numeração foi lida e confirmada no catálogo (leitura sem barra vale menos).
+    const confirmedEvidence = new Map<string, number>();
+    for (const { candidate, card } of confirmed) {
+      const value = candidate.quality === 'guess' ? 0.6 : 1;
+      confirmedEvidence.set(card.externalId, Math.max(confirmedEvidence.get(card.externalId) ?? 0, value));
+    }
+    const officialBySet = new Map(sets.map((s) => [s.externalId, s.officialCount]));
+    const streams = { bottom: digitsStream(input.numberText ?? ''), full: digitsStream(input.fullText ?? '') };
 
     const names = matchCardNames(lines, index).filter((m) => m.score >= MIN_NAME_SCORE);
 
@@ -140,9 +142,10 @@ export class IdentificationService {
     };
 
     const ranked = [...pool.values()]
-      .map((card) => this.score(card, names, readNumbers, compatibleSets, primaryNumber, guessedCards))
+      .map((card) => this.score(card, names, this.numberScore(card, officialBySet, streams, confirmedEvidence), compatibleSets))
       .filter((c) => c.score > 0.25)
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    capAmbiguousConfidence(ranked);
 
     const page = ranked.slice(offset, offset + limit);
     const enriched = await Promise.all(page.map((c) => this.enrich(c)));
@@ -190,45 +193,43 @@ export class IdentificationService {
     return best;
   }
 
-  private score(
+  /**
+   * Evidência (0–1) de que a numeração desta carta está impressa na foto. Confere o número do candidato no texto
+   * do rodapé com tolerância a erros, em vez de depender de o OCR ter lido o número inteiro certo.
+   */
+  private numberScore(
     card: CatalogCardSummary,
-    names: NameMatch[],
-    readNumbers: Set<string>,
-    compatibleSets: Set<string>,
-    primaryNumber: NumberCandidate | null,
-    guessedCards: Set<string>,
-  ): IdentificationCandidate {
+    officialBySet: Map<string, number | null>,
+    streams: { bottom: string; full: string },
+    confirmedEvidence: Map<string, number>,
+  ): number {
+    const total = card.setId ? (officialBySet.get(card.setId) ?? null) : null;
+    const bottom = numberEvidence(card.localNumber, total, streams.bottom);
+    // No texto da carta inteira há HP, dano e anos: lá só vale a numeração exata.
+    const full = numberEvidence(card.localNumber, total, streams.full) === 1 ? 1 : 0;
+    return Math.max(bottom, full, confirmedEvidence.get(card.externalId) ?? 0);
+  }
+
+  private score(card: CatalogCardSummary, names: NameMatch[], numberScore: number, compatibleSets: Set<string>): IdentificationCandidate {
     const reasons: string[] = [];
     const nameScore = this.nameScore(card, names);
-    const numberMatch = readNumbers.has(normalizeLocalNumber(card.localNumber));
-    const guessed = !numberMatch && guessedCards.has(card.externalId);
-    const setMatch = !!card.setId && compatibleSets.has(card.setId) && !guessed;
+    const setMatch = !!card.setId && compatibleSets.has(card.setId);
+    // Total da expansão lido mas número da carta não: pista parcial (o OCR errou um dígito do número).
+    const number = Math.max(numberScore, setMatch ? 0.35 : 0);
 
     if (nameScore >= 0.8) reasons.push('nome');
-    if (numberMatch) reasons.push('número');
-    if (guessed) reasons.push('número provável');
+    if (number >= 0.8) reasons.push('número');
+    else if (number >= 0.5) reasons.push('número parecido');
     if (setMatch) reasons.push('expansão compatível com o total impresso');
 
-    const hasName = names.length > 0;
-    let score = 0;
-    if (hasName) score += 0.5 * nameScore;
-    if (numberMatch) score += 0.3;
-    if (setMatch) score += 0.2;
-    // Sem nome lido, número + expansão é a melhor evidência disponível.
-    if (!hasName && numberMatch) score += 0.2;
-    // Combinação completa ganha bônus para ficar acima de qualquer correspondência só por nome.
-    if (nameScore >= 0.8 && numberMatch && setMatch) score += 0.2;
-    // Nome + expansão sem o número: o OCR costuma errar um dígito ("126/189" em vez de "136/189").
-    if (nameScore >= 0.8 && setMatch && !numberMatch) score += 0.1;
-    // Número lido mas diferente: penaliza levemente sem descartar (o OCR pode ter errado).
-    if (readNumbers.size && !numberMatch) score -= 0.05;
-    if (guessed) score += hasName ? 0.15 : 0.3;
+    // Nome e número pesam quase igual; sem nome legível, só o número decide.
+    let score = names.length ? 0.55 * nameScore + 0.45 * number : 0.8 * number;
     if (!card.image) score -= 0.02;
 
     let confidence: Confidence | null = null;
-    if (nameScore >= 0.8 && numberMatch && (setMatch || primaryNumber?.printedTotal == null)) confidence = 'high';
-    else if ((nameScore >= 0.8 && (numberMatch || setMatch)) || (numberMatch && setMatch && nameScore >= 0.5)) confidence = 'medium';
-    else if (nameScore >= 0.8 || (numberMatch && setMatch)) confidence = 'low';
+    if (nameScore >= 0.8 && number >= 0.8) confidence = 'high';
+    else if ((nameScore >= 0.8 && number >= 0.5) || (nameScore >= 0.6 && number >= 0.8) || (!names.length && number === 1 && setMatch)) confidence = 'medium';
+    else if (nameScore >= 0.6 || number >= 0.5) confidence = 'low';
 
     return {
       externalId: card.externalId,
@@ -260,5 +261,21 @@ export class IdentificationService {
     } catch {
       return candidate;
     }
+  }
+}
+
+const LOWER: Record<Confidence, Confidence | null> = { high: 'medium', medium: 'low', low: 'low' };
+
+/**
+ * Se dois candidatos ficaram praticamente empatados, nenhum deles merece a confiança que teria sozinho:
+ * rebaixa um nível os empatados (ex.: duas impressões do mesmo Pokémon sem número legível).
+ */
+export function capAmbiguousConfidence(ranked: IdentificationCandidate[], margin = 0.03): void {
+  const first = ranked[0];
+  const second = ranked[1];
+  if (!first?.confidence || !second || first.score - second.score >= margin) return;
+  for (const c of ranked) {
+    if (first.score - c.score >= margin) break;
+    if (c.confidence) c.confidence = LOWER[c.confidence];
   }
 }

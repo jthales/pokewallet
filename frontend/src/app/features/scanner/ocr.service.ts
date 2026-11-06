@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import type Tesseract from 'tesseract.js';
-import { NAME_REGION, NAME_REGION_TALL, NUMBER_REGION, cropRegion, enhancedCopy, loadBitmap, resizeForProcessing } from './image-utils';
+import { NAME_REGION, NAME_REGION_TALL, NUMBER_CORNERS, NUMBER_REGION, cropRegion, enhancedCopy, loadBitmap, resizeForProcessing } from './image-utils';
 
 export interface OcrOutput {
   fullText: string;
@@ -81,6 +81,13 @@ export class OcrService {
         this.progress.set({ stage: 'number', label: 'Lendo o número…', value: 0.66 });
         await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT as Tesseract.PSM });
         numberText = (await worker.recognize(cropRegion(base, NUMBER_REGION, 2.5))).data.text;
+        // Os cantos só com dígitos: o servidor confere neles o número de cada candidato, tolerando erros.
+        await worker.setParameters({ tessedit_char_whitelist: '0123456789/' });
+        try {
+          for (const corner of NUMBER_CORNERS) numberText += `\n${(await worker.recognize(cropRegion(base, corner, 3))).data.text}`;
+        } finally {
+          await worker.setParameters({ tessedit_char_whitelist: '' });
+        }
       }
 
       this.progress.set({ stage: 'full', label: 'Lendo o restante da carta…', value: cropRegions ? 0.9 : 0.5 });

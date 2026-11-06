@@ -1,9 +1,15 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, errorMessage } from '../../core/api.service';
 import { IdentificationCandidate, IdentificationResult } from '../../core/models';
 import { validateImageFile } from './image-utils';
-import { OcrOutput, OcrService } from './ocr.service';
+import { OcrOutput, OcrProgress, OcrService } from './ocr.service';
+import { VisualMatchService, rerankByVisual } from './visual-match';
+
+/** Quantos candidatos aparecem por vez. */
+const PAGE_SIZE = 5;
+/** Quantos candidatos são comparados pela imagem: a impressão certa pode estar fora dos 5 primeiros pelo texto. */
+const VISUAL_POOL = 20;
 
 export type ScannerStep = 'capture' | 'preview' | 'processing' | 'results';
 
@@ -12,6 +18,12 @@ export type ScannerStep = 'capture' | 'preview' | 'processing' | 'results';
 export class ScannerStore {
   private readonly api = inject(ApiService);
   private readonly ocr = inject(OcrService);
+  private readonly visual = inject(VisualMatchService);
+  /** Candidatos já buscados e reordenados que ainda não foram mostrados. */
+  private queued: IdentificationCandidate[] = [];
+  /** Próximo deslocamento no servidor (depois do lote comparado pela imagem). */
+  private serverOffset = 0;
+  private serverHasMore = false;
 
   readonly step = signal<ScannerStep>('capture');
   readonly image = signal<Blob | null>(null);
@@ -22,7 +34,11 @@ export class ScannerStore {
   readonly result = signal<IdentificationResult | null>(null);
   readonly candidates = signal<IdentificationCandidate[]>([]);
   readonly loadingMore = signal(false);
-  readonly progress = this.ocr.progress;
+  private readonly matching = signal(false);
+  /** Progresso do OCR e, depois dele, da comparação com as imagens oficiais. */
+  readonly progress = computed<OcrProgress | null>(() =>
+    this.matching() ? { stage: 'full', label: 'Comparando com as imagens oficiais…', value: 0.95 } : this.ocr.progress(),
+  );
 
   /** Recebe uma foto (upload ou câmera). Retorna false quando o arquivo é inválido. */
   setImage(blob: Blob, fromCamera = false): boolean {
@@ -60,9 +76,16 @@ export class ScannerStore {
       return;
     }
     try {
-      const result = await firstValueFrom(this.api.identify({ ...text, limit: 5, offset: 0 }));
-      this.result.set(result);
-      this.candidates.set(result.candidates);
+      const result = await firstValueFrom(this.api.identify({ ...text, limit: VISUAL_POOL, offset: 0 }));
+      this.matching.set(true);
+      const similarities = await this.visual.similarities(image, result.candidates).catch(() => new Map<string, number>());
+      this.matching.set(false);
+      const ranked = rerankByVisual(result.candidates, similarities);
+      this.serverOffset = result.candidates.length;
+      this.serverHasMore = result.hasMore;
+      this.queued = ranked.slice(PAGE_SIZE);
+      this.candidates.set(ranked.slice(0, PAGE_SIZE));
+      this.result.set({ ...result, candidates: this.candidates(), hasMore: this.hasMore() });
       this.step.set('results');
     } catch (e) {
       this.error.set(errorMessage(e, 'Não foi possível consultar o catálogo.'));
@@ -75,9 +98,15 @@ export class ScannerStore {
     if (!text || this.loadingMore()) return;
     this.loadingMore.set(true);
     try {
-      const result = await firstValueFrom(this.api.identify({ ...text, limit: 5, offset: this.candidates().length }));
-      this.result.set({ ...result, candidates: [...this.candidates(), ...result.candidates] });
-      this.candidates.update((c) => [...c, ...result.candidates]);
+      if (!this.queued.length) {
+        const result = await firstValueFrom(this.api.identify({ ...text, limit: PAGE_SIZE, offset: this.serverOffset }));
+        this.serverOffset += result.candidates.length;
+        this.serverHasMore = result.hasMore;
+        this.queued = result.candidates;
+      }
+      this.candidates.update((c) => [...c, ...this.queued.slice(0, PAGE_SIZE)]);
+      this.queued = this.queued.slice(PAGE_SIZE);
+      this.result.update((r) => (r ? { ...r, candidates: this.candidates(), hasMore: this.hasMore() } : r));
     } catch (e) {
       this.error.set(errorMessage(e));
     } finally {
@@ -85,7 +114,14 @@ export class ScannerStore {
     }
   }
 
+  private hasMore() {
+    return this.queued.length > 0 || this.serverHasMore;
+  }
+
   reset() {
+    this.queued = [];
+    this.serverOffset = 0;
+    this.serverHasMore = false;
     this.revokePreview();
     this.image.set(null);
     this.error.set(null);
