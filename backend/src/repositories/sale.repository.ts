@@ -11,7 +11,7 @@ export class SaleRepository {
     return this.prisma.sale.findMany({
       where: includeCancelled ? {} : { cancelledAt: null },
       orderBy: [{ soldAt: 'desc' }, { createdAt: 'desc' }],
-      include: { collectionItem: { include: { cardCatalog: true } } },
+      include: { collectionItem: { include: { cardCatalog: { include: { localizations: true } } } } },
     });
   }
 }

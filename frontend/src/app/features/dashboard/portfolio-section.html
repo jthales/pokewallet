@@ -143,7 +143,7 @@
             @for (r of block.list; track r.itemId) {
               <li>
                 <a [routerLink]="['/colecao', r.cardId]" class="row">
-                  <app-card-image class="thumb" [src]="r.imageUrl" [alt]="r.name" />
+                  <app-card-image class="thumb" [src]="r.imageUrl" [fallback]="r.imageFallbackUrl" [alt]="r.name" />
                   <div class="txt">
                     <strong>{{ r.name }}</strong>
                     <span class="muted">{{ r.setName }} · {{ r.variant | variant }}</span>

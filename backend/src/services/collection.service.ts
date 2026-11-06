@@ -1,10 +1,11 @@
-import type { CardCatalog, CollectionItem, Prisma, PrismaClient, Sale } from '@prisma/client';
+import type { CardCatalog, CardCatalogLocalization, CollectionItem, Prisma, PrismaClient, Sale } from '@prisma/client';
 import { CatalogUnavailableError, type CardCatalogProvider } from '../integrations/catalog-provider.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { normalizeText } from '../lib/text.js';
 import { CardCatalogRepository } from '../repositories/card-catalog.repository.js';
 import { CollectionItemRepository } from '../repositories/collection-item.repository.js';
 import type { CollectionQuery, CreateItemsInput, UpdateItemInput } from '../schemas/index.js';
+import { CardLocalizationService, displayLanguageFor, localizeCard } from './card-localization.js';
 
 export interface CollectionCardView {
   id: string;
@@ -17,29 +18,47 @@ export interface CollectionCardView {
   rarity: string | null;
   imageUrl: string | null;
   imageLargeUrl: string | null;
+  /** Imagem em inglês, para quando a imagem no idioma do exemplar não carregar. */
+  imageFallbackUrl: string | null;
+  /** Idioma do nome/imagem exibidos (pt quando a maioria dos exemplares é em português). */
+  displayLanguage: string;
+  /** Nome no catálogo em inglês. */
+  baseName: string;
   metadata: unknown;
   counts: { total: number; available: number; sold: number };
   firstAddedAt: Date;
   lastAddedAt: Date;
 }
 
-type CardWithItems = CardCatalog & { items: Pick<CollectionItem, 'status' | 'createdAt'>[] };
+type CardWithItems = CardCatalog & {
+  items: Pick<CollectionItem, 'status' | 'createdAt' | 'language'>[];
+  localizations?: CardCatalogLocalization[];
+};
+
+/** Campos dos exemplares e localizações que as views da carteira precisam. */
+export const CARD_VIEW_INCLUDE = {
+  items: { select: { status: true, createdAt: true, language: true } },
+  localizations: true,
+} as const;
 
 export function toCardView(card: CardWithItems): CollectionCardView {
-  const meta = (card.metadata ?? {}) as Record<string, unknown>;
+  const loc = localizeCard(card, card.localizations, displayLanguageFor(card.items));
   const dates = card.items.map((i) => i.createdAt.getTime());
   const available = card.items.filter((i) => i.status === 'AVAILABLE').length;
   return {
     id: card.id,
     provider: card.provider,
     externalId: card.externalId,
-    name: card.name,
+    name: loc.name,
     localNumber: card.localNumber,
     setId: card.setId,
-    setName: card.setName,
+    setName: loc.setName,
     rarity: card.rarity,
-    imageUrl: card.imageUrl,
-    imageLargeUrl: typeof meta['imageLarge'] === 'string' ? meta['imageLarge'] : null,
+    imageUrl: loc.imageUrl,
+    imageLargeUrl: loc.imageLargeUrl,
+    imageFallbackUrl: loc.imageFallbackUrl,
+    displayLanguage: loc.displayLanguage,
+    baseName: loc.baseName,
     metadata: card.metadata,
     counts: { total: card.items.length, available, sold: card.items.length - available },
     firstAddedAt: new Date(dates.length ? Math.min(...dates) : card.createdAt.getTime()),
@@ -50,6 +69,7 @@ export function toCardView(card: CardWithItems): CollectionCardView {
 export class CollectionService {
   private readonly cards: CardCatalogRepository;
   private readonly items: CollectionItemRepository;
+  private readonly localization: CardLocalizationService;
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -57,6 +77,14 @@ export class CollectionService {
   ) {
     this.cards = new CardCatalogRepository(prisma);
     this.items = new CollectionItemRepository(prisma);
+    this.localization = new CardLocalizationService(prisma, catalog);
+  }
+
+  /** Busca cartas da carteira já com nome/imagem no idioma dos exemplares, completando o que faltar. */
+  private async findCardsLocalized<T extends Prisma.CardCatalogFindManyArgs>(args: T) {
+    const load = () => this.prisma.cardCatalog.findMany({ ...args, include: CARD_VIEW_INCLUDE });
+    const rows = await load();
+    return (await this.localization.backfill(rows)) ? load() : rows;
   }
 
   /**
@@ -96,6 +124,7 @@ export class CollectionService {
         notes: input.notes ?? null,
       })),
     );
+    await this.localization.ensureOne(card, input.language);
     return { card, items: created };
   }
 
@@ -103,15 +132,12 @@ export class CollectionService {
     const where: Prisma.CardCatalogWhereInput = { items: { some: query.status ? { status: query.status } : {} } };
     if (query.setId) where.setId = query.setId;
     if (query.rarity) where.rarity = query.rarity;
-    const rows = await this.prisma.cardCatalog.findMany({
-      where,
-      include: { items: { select: { status: true, createdAt: true } } },
-    });
+    const rows = await this.findCardsLocalized({ where });
     let views = rows.map(toCardView);
     if (query.search) {
-      // Busca sem acentos/caixa, feita em memória (SQLite não tem collation sem acentos).
+      // Busca sem acentos/caixa, feita em memória; aceita o nome exibido e o nome em inglês.
       const term = normalizeText(query.search);
-      views = views.filter((v) => normalizeText(v.name).includes(term) || normalizeText(v.setName).includes(term));
+      views = views.filter((v) => [v.name, v.baseName, v.setName].some((t) => normalizeText(t).includes(term)));
     }
     const order = query.order ?? (query.sort === 'name' ? 'asc' : 'desc');
     const dir = order === 'asc' ? 1 : -1;
@@ -124,14 +150,11 @@ export class CollectionService {
   }
 
   async getFilters() {
-    const rows = await this.prisma.cardCatalog.findMany({
-      where: { items: { some: {} } },
-      select: { setId: true, setName: true, rarity: true },
-    });
+    const rows = await this.prisma.cardCatalog.findMany({ where: { items: { some: {} } }, include: CARD_VIEW_INCLUDE });
     const sets = new Map<string, string>();
     const rarities = new Set<string>();
     for (const r of rows) {
-      sets.set(r.setId, r.setName);
+      sets.set(r.setId, toCardView(r).setName);
       if (r.rarity) rarities.add(r.rarity);
     }
     return {
@@ -141,11 +164,14 @@ export class CollectionService {
   }
 
   async getCard(id: string) {
-    const card = await this.prisma.cardCatalog.findUnique({
-      where: { id },
-      include: { items: { orderBy: { createdAt: 'asc' }, include: { sales: { where: { cancelledAt: null } } } } },
-    });
+    const load = () =>
+      this.prisma.cardCatalog.findUnique({
+        where: { id },
+        include: { localizations: true, items: { orderBy: { createdAt: 'asc' }, include: { sales: { where: { cancelledAt: null } } } } },
+      });
+    let card = await load();
     if (!card) throw notFound('Carta');
+    if (await this.localization.backfill([card])) card = (await load()) ?? card;
     return { ...toCardView(card), items: card.items.map(toItemView) };
   }
 
@@ -160,6 +186,7 @@ export class CollectionService {
     }
     if (input.manualValueCents !== undefined) data.manualValueAt = input.manualValueCents === null ? null : new Date();
     const updated = await this.items.update(id, data);
+    if (input.language) await this.localization.ensureOne(existing.cardCatalog, input.language);
     return toItemView({ ...updated, sales: existing.sales });
   }
 
@@ -177,9 +204,13 @@ export class CollectionService {
       this.prisma.collectionItem.findMany({
         orderBy: { createdAt: 'desc' },
         take: 30,
-        include: { cardCatalog: { include: { items: { select: { status: true, createdAt: true } } } } },
+        include: { cardCatalog: { include: CARD_VIEW_INCLUDE } },
       }),
     ]);
+    if (await this.localization.backfill(recent.map((r) => r.cardCatalog))) {
+      const fresh = await this.prisma.cardCatalog.findMany({ where: { id: { in: recent.map((r) => r.cardCatalogId) } }, include: CARD_VIEW_INCLUDE });
+      for (const r of recent) r.cardCatalog = fresh.find((c) => c.id === r.cardCatalogId) ?? r.cardCatalog;
+    }
     const count = (s: string) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
     const seen = new Set<string>();
     const recentCards: CollectionCardView[] = [];

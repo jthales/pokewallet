@@ -11,10 +11,13 @@
   </div>
 } @else if (card(); as c) {
   <div class="layout">
-    <app-card-image class="hero-img" [src]="c.imageLargeUrl ?? c.imageUrl" [alt]="c.name" eager />
+    <app-card-image class="hero-img" [src]="c.imageLargeUrl ?? c.imageUrl" [fallback]="c.imageFallbackUrl" [alt]="c.name" eager />
     <div class="info">
       <h1>{{ c.name }}</h1>
       <dl class="facts">
+        @if (c.baseName && c.baseName !== c.name) {
+          <div><dt>Nome em inglês</dt><dd>{{ c.baseName }}</dd></div>
+        }
         <div><dt>Expansão</dt><dd>{{ c.setName }}</dd></div>
         <div><dt>Número</dt><dd>{{ c.localNumber }}@if (c.metadata?.setOfficialCount) {/{{ c.metadata?.setOfficialCount }}}</dd></div>
         <div><dt>Raridade</dt><dd>{{ c.rarity ?? 'Não informada' }}</dd></div>

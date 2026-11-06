@@ -66,7 +66,7 @@
     @for (card of cards(); track card.id) {
       <a class="tile" [routerLink]="['/colecao', card.id]" [attr.aria-label]="card.name + ', ' + card.setName + ', ' + card.counts.available + ' disponíveis'">
         <div class="img-wrap">
-          <app-card-image [src]="card.imageUrl" [alt]="card.name" />
+          <app-card-image [src]="card.imageUrl" [fallback]="card.imageFallbackUrl" [alt]="card.name" />
           <span class="qty" [class.none]="!card.counts.available" title="Exemplares disponíveis">×{{ card.counts.available }}</span>
         </div>
         <div class="name">{{ card.name }}</div>

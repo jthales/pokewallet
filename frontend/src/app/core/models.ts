@@ -135,6 +135,12 @@ export interface CollectionCard {
   rarity: string | null;
   imageUrl: string | null;
   imageLargeUrl: string | null;
+  /** Imagem em inglês, usada se a imagem no idioma do exemplar não carregar. */
+  imageFallbackUrl: string | null;
+  /** Idioma do nome/imagem exibidos (pt quando a maioria dos exemplares é em português). */
+  displayLanguage: CatalogLanguage;
+  /** Nome no catálogo em inglês. */
+  baseName: string;
   metadata: CardMetadata | null;
   counts: { total: number; available: number; sold: number };
   firstAddedAt: string;
@@ -210,7 +216,7 @@ export interface SaleHistoryEntry {
   cancelledAt: string | null;
   createdAt: string;
   item: { id: string; condition: Condition; variant: Variant; language: PhysicalLanguage; purchasePriceCents: number | null; purchaseCurrency: string; costCents: number | null };
-  card: { id: string; name: string; setName: string; localNumber: string; imageUrl: string | null };
+  card: { id: string; name: string; setName: string; localNumber: string; imageUrl: string | null; imageFallbackUrl: string | null };
 }
 
 export interface SalesHistory {
@@ -260,6 +266,7 @@ export interface RankingEntry {
   setName: string;
   localNumber: string;
   imageUrl: string | null;
+  imageFallbackUrl: string | null;
   variant: Variant;
   condition: Condition;
   valueSource: ValueSource | null;
